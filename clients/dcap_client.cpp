@@ -4,6 +4,7 @@
 #include "../protocol/protocol.h"
 #include <algorithm>
 #include <chrono>
+#include <ctime>
 #include <cstring>
 #include <iostream>
 #include <stdexcept>
@@ -54,6 +55,7 @@ bool DcapClient::connect() {
         !addresses) {
         std::lock_guard<std::mutex> lock(state_mutex_);
         last_error_ = "Could not resolve chat server address";
+        if (socket_runtime_initialized_.exchange(false)) cleanupSocketRuntime();
         return false;
     }
 
@@ -73,6 +75,7 @@ bool DcapClient::connect() {
     if (tcp == INVALID_SOCKET_HANDLE) {
         std::lock_guard<std::mutex> lock(state_mutex_);
         last_error_ = "Could not connect to TCP server";
+        if (socket_runtime_initialized_.exchange(false)) cleanupSocketRuntime();
         return false;
     }
 
@@ -81,6 +84,7 @@ bool DcapClient::connect() {
         closeSocket(tcp);
         std::lock_guard<std::mutex> lock(state_mutex_);
         last_error_ = "Could not create UDP socket";
+        if (socket_runtime_initialized_.exchange(false)) cleanupSocketRuntime();
         return false;
     }
     sockaddr_in local{};
@@ -91,6 +95,7 @@ bool DcapClient::connect() {
         closeSocket(tcp); closeSocket(udp);
         std::lock_guard<std::mutex> lock(state_mutex_);
         last_error_ = "Could not bind UDP socket";
+        if (socket_runtime_initialized_.exchange(false)) cleanupSocketRuntime();
         return false;
     }
     udpDestination.sin_port = htons(udp_port_);
