@@ -16,7 +16,7 @@ Authentication in protocol v1 is username-based. The protocol does not transmit 
 
 All DCAP TCP packets and UDP datagrams use AES-256-GCM authenticated encryption. The 14-byte DCAP header remains visible and is authenticated as GCM additional data; the payload is encrypted. The Server decrypts UDP relay traffic to authorize the transfer and re-encrypts it for the destination client.
 
-The Server and every Client Agent must have the same 32-byte pre-shared key in `DCAP_KEY_HEX` (64 hexadecimal characters). Generate it with `openssl rand -hex 32`; set the environment variable separately for each process before starting it. Never commit the key, put it in source code, or expose it to the browser. The application fails closed if the key is missing or malformed.
+On first startup, the Server automatically generates a 256-bit key with OpenSSL and saves it to `dcap.key` in the working directory. Later Server restarts reuse that file. Each Client Agent reads the same file automatically; it does not generate a separate key. The file is excluded by `.gitignore` and must never be committed or exposed to the browser. On POSIX systems it is created with owner-only permissions (`0600`). If a Client runs on another machine, securely copy the Server’s `dcap.key` to that machine or set `DCAP_KEY_FILE` to its secure location. The optional `DCAP_KEY_FILE` environment variable overrides the default file path.
 
 This shared-key setup does not provide per-user keys, password authentication, automatic key exchange/rotation, forward secrecy, or replay protection. It is a course-project security profile, not production-grade security.
 
