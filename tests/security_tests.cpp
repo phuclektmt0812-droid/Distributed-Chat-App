@@ -2,6 +2,7 @@
 #include <cassert>
 #include <cstdint>
 #include <iostream>
+#include <filesystem>
 int main() {
     protocol::EncryptionKey key{}, wrongKey{};
     for(std::size_t i=0;i<key.size();++i) key[i]=static_cast<std::uint8_t>(i+1);
