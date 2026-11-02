@@ -3,6 +3,19 @@
 #include <openssl/evp.h>
 #include <openssl/rand.h>
 #include <cstdlib>
+#include <cerrno>
+#include <cstdio>
+#include <cstring>
+#include <fstream>
+#ifdef _WIN32
+#include <fcntl.h>
+#include <io.h>
+#include <sys/stat.h>
+#else
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#endif
 #include <iomanip>
 #include <memory>
 #include <sstream>
@@ -19,15 +32,74 @@ int nibble(char c) {
 }
 } // namespace
 
-EncryptionKey readKeyFromEnvironment(const char* name) {
-    const char* text=std::getenv(name);
-    if (!text) throw std::runtime_error(std::string("missing environment key: ")+name);
-    const std::string hex(text);
-    if (hex.size()!=64) throw std::invalid_argument("DCAP_KEY_HEX must be 64 hexadecimal characters");
+namespace {
+EncryptionKey parseKeyHex(const std::string& hex) {
+    if (hex.size()!=64)
+        throw std::invalid_argument("Key file must contain exactly 64 hexadecimal characters");
     EncryptionKey key{};
     for (std::size_t i=0;i<key.size();++i)
         key[i]=static_cast<std::uint8_t>((nibble(hex[i*2])<<4)|nibble(hex[i*2+1]));
     return key;
+}
+} // namespace
+
+std::string keyFilePathFromEnvironment(const char* name) {
+    const char* configured=std::getenv(name);
+    return configured && *configured ? std::string(configured) : std::string("dcap.key");
+}
+
+EncryptionKey readKeyFromFile(const std::string& path) {
+    std::ifstream input(path,std::ios::binary);
+    if(!input) throw std::runtime_error("Cannot open key file '"+path+"'. Start the Server first or copy its key file securely.");
+    std::string hex;
+    input >> hex;
+    std::string extra;
+    if(!input || (input >> extra))
+        throw std::invalid_argument("Key file '"+path+"' is empty or contains unexpected data");
+#ifndef _WIN32
+    struct stat info{};
+    if(::stat(path.c_str(),&info)==0 && (info.st_mode & (S_IRWXG|S_IRWXO))!=0)
+        throw std::runtime_error("Key file '"+path+"' is accessible by group/others; run chmod 600 on it");
+#endif
+    return parseKeyHex(hex);
+}
+
+EncryptionKey loadOrCreateKeyFile(const std::string& path) {
+    const std::string contents=generateKeyHex()+"\n";
+#ifdef _WIN32
+    const int fd=::_open(path.c_str(),_O_WRONLY|_O_CREAT|_O_EXCL|_O_BINARY,_S_IREAD|_S_IWRITE);
+#else
+    const int fd=::open(path.c_str(),O_WRONLY|O_CREAT|O_EXCL,S_IRUSR|S_IWUSR);
+#endif
+    if(fd<0) {
+        if(errno==EEXIST) return readKeyFromFile(path);
+        throw std::runtime_error("Cannot create key file '"+path+"': "+std::string(std::strerror(errno)));
+    }
+    std::size_t offset=0;
+    while(offset<contents.size()) {
+#ifdef _WIN32
+        const int written=::_write(fd,contents.data()+offset,static_cast<unsigned int>(contents.size()-offset));
+#else
+        const ssize_t written=::write(fd,contents.data()+offset,contents.size()-offset);
+#endif
+        if(written<0 && errno==EINTR) continue;
+        if(written<=0) {
+#ifdef _WIN32
+            ::_close(fd);
+#else
+            ::close(fd);
+#endif
+            std::remove(path.c_str());
+            throw std::runtime_error("Could not write key file '"+path+"'");
+        }
+        offset+=static_cast<std::size_t>(written);
+    }
+#ifdef _WIN32
+    if(::_close(fd)!=0) throw std::runtime_error("Could not close key file '"+path+"'");
+#else
+    if(::close(fd)!=0) throw std::runtime_error("Could not close key file '"+path+"'");
+#endif
+    return parseKeyHex(contents.substr(0,64));
 }
 std::string generateKeyHex() {
     EncryptionKey key{};
