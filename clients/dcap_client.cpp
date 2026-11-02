@@ -38,6 +38,10 @@ DcapClient::~DcapClient() { disconnect(); }
 
 bool DcapClient::connect() {
     if (connected_) return true;
+    if (tcp_thread_.joinable() || udp_thread_.joinable() || maintenance_thread_.joinable() ||
+        tcp_socket_ != INVALID_SOCKET_HANDLE || udp_socket_ != INVALID_SOCKET_HANDLE) {
+        disconnect();
+    }
     if (server_address_.empty() || server_port_ == 0 || !initializeSocketRuntime()) {
         std::lock_guard<std::mutex> lock(state_mutex_);
         last_error_ = "Invalid server address or socket initialization failed";
