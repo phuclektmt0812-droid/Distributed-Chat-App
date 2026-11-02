@@ -54,7 +54,49 @@ add_executable(client_agent
 target_include_directories(client_agent PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(client_agent PRIVATE client_file_transfer chat_protocol nlohmann_json::nlohmann_json)
 
+# Shared current-protocol server/client implementation for integration tests.
+add_library(dcap_test_support STATIC
+    server/server.cpp
+    server/user_manager.cpp
+    server/tcp_session.cpp
+    server/udp_service.cpp
+    server/file_relay.cpp
+    clients/dcap_client.cpp
+)
+target_include_directories(dcap_test_support PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
+target_link_libraries(dcap_test_support
+    PUBLIC client_file_transfer chat_protocol nlohmann_json::nlohmann_json
+)
+
 enable_testing()
+
+add_executable(dcap_protocol_tests tests/test_protocol.cpp)
+target_link_libraries(dcap_protocol_tests PRIVATE chat_protocol)
+add_test(NAME dcap_protocol_tests COMMAND dcap_protocol_tests)
+
+add_executable(dcap_connection_tests tests/test_connection.cpp)
+target_link_libraries(dcap_connection_tests PRIVATE dcap_test_support)
+add_test(NAME dcap_connection_tests COMMAND dcap_connection_tests)
+
+add_executable(dcap_login_tests tests/test_login.cpp)
+target_link_libraries(dcap_login_tests PRIVATE dcap_test_support)
+add_test(NAME dcap_login_tests COMMAND dcap_login_tests)
+
+add_executable(dcap_chat_tests tests/test_chat.cpp)
+target_link_libraries(dcap_chat_tests PRIVATE dcap_test_support)
+add_test(NAME dcap_chat_tests COMMAND dcap_chat_tests)
+
+add_executable(dcap_file_transfer_tests tests/test_file_transfer.cpp)
+target_link_libraries(dcap_file_transfer_tests PRIVATE client_file_transfer)
+add_test(NAME dcap_file_transfer_tests COMMAND dcap_file_transfer_tests)
+
 add_executable(dcap_security_tests tests/security_tests.cpp)
 target_link_libraries(dcap_security_tests PRIVATE chat_protocol)
 add_test(NAME dcap_security_tests COMMAND dcap_security_tests)
+
+set_tests_properties(
+    dcap_connection_tests
+    dcap_login_tests
+    dcap_chat_tests
+    PROPERTIES RUN_SERIAL TRUE
+)

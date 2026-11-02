@@ -1,15 +1,16 @@
 #pragma once
 
-#include "../clients/client.h"
+#include "../clients/dcap_client.h"
 #include "../server/server.h"
 
-#include <ws2tcpip.h>
-
+#include <algorithm>
 #include <chrono>
-#include <cstdint>
+#include <cstdlib>
+#include <filesystem>
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <vector>
 
 namespace test {
 
@@ -19,122 +20,99 @@ inline void require(bool condition, const std::string& message) {
     }
 }
 
-inline std::uint16_t findAvailablePort() {
-    WSADATA data{};
-    require(WSAStartup(MAKEWORD(2, 2), &data) == 0,
-        "WSAStartup failed while finding an available port");
-
-    SOCKET probe = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    if (probe == INVALID_SOCKET) {
-        WSACleanup();
-        throw std::runtime_error("Could not create port-probe socket");
+inline AgentEvent waitForEvent(
+    DcapClient& client,
+    const std::string& expectedType,
+    std::chrono::milliseconds timeout = std::chrono::seconds(5)
+) {
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (std::chrono::steady_clock::now() < deadline) {
+        for (auto& event : client.takeEvents()) {
+            if (event.type == expectedType) {
+                return event;
+            }
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
+    throw std::runtime_error("Timed out waiting for event: " + expectedType);
+}
 
-    sockaddr_in address{};
-    address.sin_family = AF_INET;
-    address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-    address.sin_port = 0;
+inline bool noEvent(
+    DcapClient& client,
+    const std::string& unexpectedType,
+    std::chrono::milliseconds timeout
+) {
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (std::chrono::steady_clock::now() < deadline) {
+        for (const auto& event : client.takeEvents()) {
+            if (event.type == unexpectedType) {
+                return false;
+            }
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    return true;
+}
 
-    int addressLength = sizeof(address);
-    const bool bound =
-        bind(probe, reinterpret_cast<sockaddr*>(&address), sizeof(address)) != SOCKET_ERROR &&
-        getsockname(
-            probe,
-            reinterpret_cast<sockaddr*>(&address),
-            &addressLength
-        ) != SOCKET_ERROR;
-    const std::uint16_t port = bound ? ntohs(address.sin_port) : 0;
-    closesocket(probe);
-    WSACleanup();
-
-    require(port != 0, "Could not reserve an available TCP port");
-    return port;
+inline bool contains(
+    const std::vector<std::string>& values,
+    const std::string& expected
+) {
+    return std::find(values.begin(), values.end(), expected) != values.end();
 }
 
 class TestServer {
 public:
-    TestServer()
-        : port_(findAvailablePort()),
-          server_(port_),
-          listener_([this]() {
-              server_.startListening();
-          }) {
-        const auto deadline = std::chrono::steady_clock::now() +
-            std::chrono::seconds(5);
+    TestServer() {
+        const auto stamp =
+            std::chrono::steady_clock::now().time_since_epoch().count();
+        key_path_ = std::filesystem::temp_directory_path() /
+            ("dcap-test-key-" + std::to_string(stamp) + ".key");
 
-        while (std::chrono::steady_clock::now() < deadline) {
-            SOCKET probe = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-            if (probe != INVALID_SOCKET) {
-                sockaddr_in address{};
-                address.sin_family = AF_INET;
-                address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-                address.sin_port = htons(port_);
-
-                const bool connected = connect(
-                    probe,
-                    reinterpret_cast<sockaddr*>(&address),
-                    sizeof(address)
-                ) != SOCKET_ERROR;
-                closesocket(probe);
-                if (connected) {
-                    return;
-                }
-            }
-            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+#ifdef _WIN32
+        if (_putenv_s("DCAP_KEY_FILE", key_path_.string().c_str()) != 0) {
+            throw std::runtime_error("Could not configure DCAP_KEY_FILE");
         }
+#else
+        if (setenv("DCAP_KEY_FILE", key_path_.string().c_str(), 1) != 0) {
+            throw std::runtime_error("Could not configure DCAP_KEY_FILE");
+        }
+#endif
 
-        stop();
-        throw std::runtime_error("Test server did not start listening");
+        if (!server_.start()) {
+            throw std::runtime_error(
+                "Could not start test server. Check whether TCP 54000 "
+                "or UDP 54001 is already in use."
+            );
+        }
     }
 
     TestServer(const TestServer&) = delete;
     TestServer& operator=(const TestServer&) = delete;
 
     ~TestServer() {
-        stop();
+        server_.stop();
+        std::error_code ignored;
+        std::filesystem::remove(key_path_, ignored);
     }
 
-    std::uint16_t port() const {
-        return port_;
+    Server& server() {
+        return server_;
     }
 
 private:
-    void stop() {
-        server_.stop();
-        if (listener_.joinable()) {
-            listener_.join();
-        }
-    }
-
-    std::uint16_t port_;
+    std::filesystem::path key_path_;
     Server server_;
-    std::thread listener_;
 };
 
-inline ClientEvent waitForEvent(
-    ChatClient& client,
-    const std::string& expectedType,
-    std::chrono::milliseconds timeout = std::chrono::seconds(3)
-) {
-    const auto deadline = std::chrono::steady_clock::now() + timeout;
-    while (std::chrono::steady_clock::now() < deadline) {
-        auto event = client.getNextEvent();
-        if (event.has_value() && event->type == expectedType) {
-            return *event;
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    }
-
-    throw std::runtime_error("Timed out waiting for event: " + expectedType);
-}
-
-inline void login(ChatClient& client, const std::string& username) {
-    require(client.connect(), "Could not connect " + username);
-    require(client.login(username, "test-password"),
-        "Could not send login for " + username);
-    const ClientEvent event = waitForEvent(client, "LOGIN_OK");
-    require(event.data.value("username", std::string()) == username,
-        "Login response returned an unexpected username");
+inline void connectAndLogin(DcapClient& client, const std::string& username) {
+    require(client.connect(), "Client connection failed: " + client.lastError());
+    require(client.login(username), "Could not send AUTH for " + username);
+    const auto event = waitForEvent(client, "LOGIN_OK");
+    require(
+        event.data.value("username", std::string()) == username,
+        "AUTH_OK returned an unexpected username"
+    );
 }
 
 } // namespace test

@@ -1,44 +1,37 @@
 #include "test_helpers.h"
 
-#include "../clients/connection.h"
-
 #include <iostream>
 
 int main() {
     try {
         test::TestServer server;
-        Connection client("127.0.0.1", server.port());
 
-        test::require(client.connectToServer("127.0.0.1", server.port()),
-            "TCP connection failed");
+        DcapClient first("127.0.0.1");
+        test::require(first.connect(), "First TCP connection failed: " + first.lastError());
+        test::require(first.login("connection-user"), "Could not send AUTH");
+        test::waitForEvent(first, "LOGIN_OK");
 
-        Message ping{};
-        ping.type = MessageType::PING;
-        ping.payload = nlohmann::json::object();
-        test::require(client.sendFramedMessage(ping),
-            "Could not send a framed test message");
-
-        Message response{};
-        test::require(client.receiveFramedMessage(response),
-            "Server did not respond to the test message");
-        test::require(response.type == MessageType::ERROR,
-            "Server did not reject an unauthenticated message");
-
-        client.disconnect();
-        test::require(!client.isConnected(),
-            "Client did not disconnect");
-
-        Connection reconnectingClient("127.0.0.1", server.port());
+        first.disconnect();
+        const auto removalDeadline =
+            std::chrono::steady_clock::now() + std::chrono::seconds(3);
+        while (server.server().users().find("connection-user") &&
+               std::chrono::steady_clock::now() < removalDeadline) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
         test::require(
-            reconnectingClient.connectToServer("127.0.0.1", server.port()),
-            "Server did not accept a new connection after client disconnect"
+            !server.server().users().find("connection-user"),
+            "Server did not remove the disconnected session"
         );
-        reconnectingClient.disconnect();
 
-        std::cout << "Connection tests passed\n";
+        DcapClient second("127.0.0.1");
+        test::connectAndLogin(second, "connection-user");
+        test::require(second.authenticated(), "Reconnected client is not authenticated");
+        second.disconnect();
+
+        std::cout << "DCAP connection and disconnect tests passed\n";
         return 0;
     } catch (const std::exception& error) {
-        std::cerr << "Connection tests failed: " << error.what() << '\n';
+        std::cerr << "DCAP connection tests failed: " << error.what() << '\n';
         return 1;
     }
 }

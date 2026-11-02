@@ -1,109 +1,137 @@
-#include "test_helpers.h"
+#include "../clients/file_sender.h"
+#include "../clients/file_receiver.h"
 
-#include "../clients/connection.h"
-#include "../protocol/udp_packet.h"
-
-#include <cstdint>
+#include <chrono>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
+#include <iterator>
+#include <stdexcept>
+#include <string>
 #include <vector>
 
 namespace {
-
-void testUdpPacketRoundTrip() {
-    UdpPacket original{};
-    original.type = UdpPacketType::FILE_DATA;
-    original.transferId = 42;
-    original.sequenceNumber = 7;
-    original.payload = {'t', 'e', 's', 't'};
-    original.payloadLength = static_cast<std::uint16_t>(original.payload.size());
-
-    const std::vector<std::uint8_t> encoded = encodeUdpPacket(original);
-    test::require(!encoded.empty(), "Could not encode a valid UDP packet");
-
-    UdpPacket decoded{};
-    test::require(
-        decodeUdpPacket(encoded.data(), encoded.size(), decoded),
-        "Could not decode an encoded UDP packet"
-    );
-    test::require(decoded.transferId == original.transferId,
-        "Decoded transfer ID did not match");
-    test::require(decoded.sequenceNumber == original.sequenceNumber,
-        "Decoded sequence number did not match");
-    test::require(decoded.payload == original.payload,
-        "Decoded file chunk did not match");
-
-    std::vector<std::uint8_t> corrupted = encoded;
-    corrupted.back() ^= 0x01;
-    test::require(
-        !decodeUdpPacket(corrupted.data(), corrupted.size(), decoded),
-        "Corrupted packet passed checksum validation"
-    );
-    test::require(
-        !decodeUdpPacket(encoded.data(), encoded.size() - 1, decoded),
-        "Truncated packet was accepted"
-    );
-
-    UdpPacket duplicate{};
-    test::require(
-        decodeUdpPacket(encoded.data(), encoded.size(), duplicate) &&
-            duplicate.transferId == original.transferId &&
-            duplicate.sequenceNumber == original.sequenceNumber,
-        "Repeated packet decode changed its transfer or sequence identifiers"
-    );
+void require(bool condition, const std::string& message) {
+    if (!condition) throw std::runtime_error(message);
 }
-
-void testRejectsInvalidTransferId(std::uint16_t port) {
-    Connection client("127.0.0.1", port);
-    test::require(client.connectToServer("127.0.0.1", port),
-        "Could not connect for invalid-transfer test");
-
-    Message login{};
-    login.type = MessageType::LOGIN;
-    const std::uint16_t senderUdpPort = 50001;
-    login.payload = {
-        {"username", "file-sender"},
-        {"password", "test-password"},
-        {"udp_port", senderUdpPort}
-    };
-    test::require(client.sendFramedMessage(login),
-        "Could not send file-transfer test login");
-
-    Message response{};
-    test::require(client.receiveFramedMessage(response) &&
-            response.type == MessageType::LOGIN_OK,
-        "Could not authenticate file-transfer test client");
-
-    Message invalidOffer{};
-    invalidOffer.type = MessageType::FILE_START;
-    const std::uint32_t invalidTransferId = 0;
-    const std::uint64_t totalSize = 4;
-    invalidOffer.payload = {
-        {"transfer_id", invalidTransferId},
-        {"recipient", "file-recipient"},
-        {"filename", "test.bin"},
-        {"total_size", totalSize},
-        {"udp_port", senderUdpPort}
-    };
-    test::require(client.sendFramedMessage(invalidOffer),
-        "Could not send invalid file-transfer offer");
-    test::require(client.receiveFramedMessage(response) &&
-            response.type == MessageType::FILE_REJECT,
-        "Server did not reject a zero transfer ID");
-    client.disconnect();
+void writeBytes(const std::filesystem::path& path, const std::vector<std::uint8_t>& bytes) {
+    std::ofstream output(path, std::ios::binary);
+    require(static_cast<bool>(output), "Could not create source test file");
+    output.write(reinterpret_cast<const char*>(bytes.data()),
+                 static_cast<std::streamsize>(bytes.size()));
+    require(static_cast<bool>(output), "Could not write source test file");
 }
+std::vector<std::uint8_t> readBytes(const std::filesystem::path& path) {
+    std::ifstream input(path, std::ios::binary);
+    require(static_cast<bool>(input), "Could not open received file");
+    return std::vector<std::uint8_t>(
+        std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>());
+}
+void testSenderReceiverRoundTrip() {
+    const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
+    const auto root = std::filesystem::temp_directory_path() /
+        ("dcap-file-test-" + std::to_string(stamp));
+    const auto sourcePath = root / "source.bin";
+    const auto receiveDirectory = root / "received";
+    std::filesystem::create_directories(root);
 
+    std::vector<std::uint8_t> original(3500);
+    for (std::size_t i = 0; i < original.size(); ++i)
+        original[i] = static_cast<std::uint8_t>((i * 37) & 0xff);
+    writeBytes(sourcePath, original);
+
+    try {
+        protocol::SequenceCounter senderSequence;
+        protocol::SequenceCounter receiverSequence;
+        filetransfer::FileSender sender(sourcePath.string(), "receiver", senderSequence);
+        const auto offerPacket = sender.makeOffer(1);
+        require(offerPacket.type == protocol::Type::FILE_OFFER,
+                "Sender did not create FILE_OFFER");
+
+        fileproto::Decision decision;
+        decision.id = sender.offer().id;
+        decision.accepted = true;
+        protocol::Packet decisionPacket;
+        decisionPacket.type = protocol::Type::FILE_DECISION;
+        require(fileproto::encode(decision, decisionPacket.payload),
+                "Could not encode FILE_DECISION");
+        require(sender.handleDecision(decisionPacket),
+                "Sender rejected a valid FILE_DECISION");
+
+        filetransfer::FileReceiver receiver(
+            sender.offer(), receiveDirectory, receiverSequence);
+        const auto now = filetransfer::TimePoint{} + std::chrono::seconds(10);
+        const auto startPackets = sender.poll(now);
+        require(startPackets.size() == 1 &&
+                startPackets.front().type == protocol::Type::FILE_START,
+                "Sender did not emit FILE_START");
+
+        const auto readyPackets = receiver.onPacket(startPackets.front());
+        require(readyPackets.size() == 1 &&
+                readyPackets.front().type == protocol::Type::FILE_ACCEPT_UDP,
+                "Receiver did not accept a valid FILE_START");
+        sender.onPacket(readyPackets.front());
+
+        const auto dataPackets = sender.poll(now + std::chrono::milliseconds(1));
+        require(!dataPackets.empty(), "Sender emitted no file data");
+
+        bool sawEnd = false;
+        bool sawChunk = false;
+        bool sawComplete = false;
+        for (const auto& packet : dataPackets) {
+            if (packet.type == protocol::Type::FILE_CHUNK) sawChunk = true;
+            else if (packet.type == protocol::Type::FILE_END) sawEnd = true;
+            else continue;
+
+            const auto responses = receiver.onPacket(packet);
+            for (const auto& response : responses) {
+                if (response.type == protocol::Type::FILE_ACK) {
+                    sender.onPacket(response);
+                } else if (response.type == protocol::Type::FILE_COMPLETE) {
+                    sawComplete = true;
+                    sender.onPacket(response);
+                }
+            }
+        }
+
+        require(sawChunk, "Sender did not emit FILE_CHUNK packets");
+        require(sawEnd, "Sender did not emit FILE_END");
+        require(sawComplete, "Receiver did not report verified completion");
+        require(sender.state() == filetransfer::SenderState::COMPLETED,
+                "Sender did not enter COMPLETED state");
+        require(receiver.state() == filetransfer::ReceiverState::COMPLETED,
+                "Receiver did not enter COMPLETED state");
+        require(readBytes(receiver.completedPath()) == original,
+                "Received file bytes do not match the original file");
+    } catch (...) {
+        std::error_code ignored;
+        std::filesystem::remove_all(root, ignored);
+        throw;
+    }
+    std::error_code ignored;
+    std::filesystem::remove_all(root, ignored);
+}
+void testInvalidOfferMetadata() {
+    fileproto::Offer invalid;
+    invalid.recipient = "receiver";
+    invalid.filename = "../bad.bin";
+    invalid.size = 1;
+    invalid.chunk_size = protocol::FILE_CHUNK_SIZE;
+    invalid.chunks = 1;
+    protocol::Bytes encoded;
+    require(!fileproto::encode(invalid, encoded),
+            "FILE_OFFER with a path-traversal filename was accepted");
+}
 } // namespace
 
 int main() {
     try {
-        testUdpPacketRoundTrip();
-        test::TestServer server;
-        testRejectsInvalidTransferId(server.port());
-
-        std::cout << "File-transfer packet and validation tests passed\n";
+        testInvalidOfferMetadata();
+        testSenderReceiverRoundTrip();
+        std::cout << "DCAP file-transfer tests passed\n";
         return 0;
     } catch (const std::exception& error) {
-        std::cerr << "File-transfer tests failed: " << error.what() << '\n';
+        std::cerr << "DCAP file-transfer tests failed: " << error.what() << '\n';
         return 1;
     }
 }
