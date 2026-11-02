@@ -102,9 +102,8 @@ function normalizeUser(user) {
 async function login() {
     sessionGeneration += 1;
     const username = elements.username.value.trim();
-    const password = elements.password.value;
-    if (!username || !password) {
-        showNotice("Enter both a username and password.", "error");
+    if (!username) {
+        showNotice("Enter a username.", "error");
         return;
     }
 
@@ -114,7 +113,7 @@ async function login() {
     try {
         const result = await requestJson("/login", {
             method: "POST",
-            body: JSON.stringify({ username, password })
+            body: JSON.stringify({ username })
         });
 
         state.currentUser = result.username || username;
@@ -128,7 +127,6 @@ async function login() {
         showNotice("");
         renderOnlineUsers();
         renderTransfers();
-        elements.password.value = "";
         selectGlobalConversation();
 
         await refreshOnlineUsers();
@@ -709,7 +707,6 @@ function initialize() {
     elements.chatSection = document.getElementById("chat-section");
     elements.loginForm = document.getElementById("login-form");
     elements.username = document.getElementById("username");
-    elements.password = document.getElementById("password");
     elements.loginButton = document.getElementById("login-button");
     elements.logoutButton = document.getElementById("logout-button");
     elements.currentUsername = document.getElementById("current-username");
