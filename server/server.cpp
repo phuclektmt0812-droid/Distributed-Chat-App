@@ -65,6 +65,7 @@ void Server::acceptLoop() {
         if(client==INVALID_SOCKET_HANDLE) {
             if(!running_) break;
             if(isInterruptedError(lastSocketError())) continue;
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
             continue;
         }
         std::lock_guard<std::mutex> lock(workersMutex_);
@@ -82,7 +83,7 @@ void Server::udpLoop() {
         ssize_t n=recvfrom(udpSocket_,buffer,sizeof(buffer),0,
                            reinterpret_cast<sockaddr*>(&src),&len);
 #endif
-        if(n<=0) { if(!running_) break; continue; }
+        if(n<=0) { if(!running_) break; std::this_thread::sleep_for(std::chrono::milliseconds(10)); continue; }
         if(static_cast<std::size_t>(n)>protocol::MAX_UDP_DATAGRAM) continue;
         udpService_->handle(buffer,static_cast<std::size_t>(n),src);
     }
