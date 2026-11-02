@@ -320,27 +320,28 @@ Client Agent
 
 Shared state must be protected. Prefer passing immutable event objects from network threads to the UI state layer. Avoid holding a mutex while calling the browser bridge or blocking socket operations.
 
-## 6. Security configuration
+## 6. Security key setup
 
-The Server and every Client Agent require the same 256-bit pre-shared key. Generate it once on a trusted machine:
+The Server now creates and persists the shared AES-256-GCM key automatically.
 
-```bash
-openssl rand -hex 32
-```
+1. Start the Server from the repository root. If `dcap.key` does not exist, the Server generates a random 256-bit key using OpenSSL and creates the file. On POSIX systems, the file is created with owner-only permissions (`0600`).
+2. Start Client Agents from the same working directory. They read the existing `dcap.key`; they never generate their own key.
+3. Keep `dcap.key` private. It is ignored by Git and must not be committed, sent through chat, or exposed to the browser.
+4. Do not delete the file between runs. Deleting it causes the next Server startup to generate a new key, and all clients must then use that new file.
 
-Set the resulting 64-character hexadecimal value in `DCAP_KEY_HEX` in each process environment. PowerShell:
+By default the file path is `dcap.key` relative to the process working directory. To use another location, set `DCAP_KEY_FILE` in the environment for both Server and Client Agent. PowerShell:
 
 ```powershell
-$env:DCAP_KEY_HEX = "<paste-the-generated-64-hex-character-key>"
+$env:DCAP_KEY_FILE = "C:\secure\dcap.key"
 ```
 
 macOS/Linux:
 
 ```bash
-export DCAP_KEY_HEX="<paste-the-generated-64-hex-character-key>"
+export DCAP_KEY_FILE="/secure/dcap.key"
 ```
 
-Set it in the terminal that starts the Server and separately in each Client Agent terminal. Do not commit the key or expose it to the browser. If it is missing or invalid, startup/connection fails; the program never falls back to plaintext.
+For a Client Agent on a different computer, securely transfer the Server-generated key file to that computer and point `DCAP_KEY_FILE` at the copied file. The application fails closed if the file is missing, malformed, or too broadly accessible on POSIX systems; it never falls back to plaintext. This automatic file setup removes manual hex-key entry, but it is still a shared-key demo arrangement, not a production key-distribution system.
 
 ## 7. Build and run — Windows, macOS, and Linux
 
