@@ -1,0 +1,45 @@
+#pragma once
+#include <cstddef>
+#include <cstdint>
+
+namespace protocol {
+constexpr std::uint32_t MAGIC = 0x44434150; // ASCII DCAP
+constexpr std::uint8_t VERSION = 1;
+constexpr std::size_t HEADER_SIZE = 14;
+constexpr std::size_t MAX_TCP_PAYLOAD = 1024 * 1024;
+constexpr std::size_t MAX_UDP_DATAGRAM = 1200;
+constexpr std::uint16_t FILE_CHUNK_SIZE = 1100;
+constexpr std::uint64_t MAX_FILE_SIZE = 100ULL * 1024 * 1024;
+constexpr std::uint32_t MAX_WINDOW = 32;
+constexpr std::uint32_t INITIAL_WINDOW = 8;
+constexpr std::uint32_t INITIAL_RTO_MS = 500;
+constexpr std::uint32_t MAX_RTO_MS = 4000;
+constexpr std::uint32_t MAX_RETRANSMISSIONS = 8;
+
+enum class Type : std::uint8_t {
+    AUTH = 1, AUTH_OK = 2, AUTH_FAIL = 3,
+    MSG = 4, PRIVATE_MSG = 5, USER_LIST = 6,
+    ACK = 7, ERROR = 8, LOGOUT = 9,
+    PING = 10, PONG = 11,
+    FILE_OFFER = 12, FILE_DECISION = 13,
+    FILE_CANCEL = 14, FILE_RESULT = 15,
+    SESSION_INFO = 16, SERVER_NOTICE = 17,
+    UDP_REGISTER = 32, UDP_REGISTER_OK = 33,
+    HEARTBEAT = 34, HEARTBEAT_ACK = 35,
+    DISCOVERY = 36, DISCOVERY_REPLY = 37,
+    FILE_START = 40, FILE_ACCEPT_UDP = 41,
+    FILE_CHUNK = 42, FILE_ACK = 43,
+    FILE_END = 44, FILE_COMPLETE = 45,
+    FILE_ERROR_UDP = 46, FILE_CANCEL_UDP = 47
+};
+
+enum class ErrorCode : std::uint16_t {
+    MALFORMED_PACKET = 100, UNSUPPORTED_VERSION = 101, UNKNOWN_TYPE = 102,
+    NOT_AUTHENTICATED = 103, INVALID_USERNAME = 104, USERNAME_IN_USE = 105,
+    USER_NOT_FOUND = 106, MESSAGE_TOO_LARGE = 107, RATE_LIMITED = 108,
+    INVALID_SESSION = 109, WRONG_TRANSPORT = 110, TRANSFER_NOT_FOUND = 200,
+    TRANSFER_REJECTED = 201, FILE_TOO_LARGE = 202, INVALID_FILENAME = 203,
+    INVALID_CHUNK = 204, TRANSFER_TIMEOUT = 205, INTEGRITY_FAILED = 206,
+    DISK_SPACE = 207, TRANSFER_CANCELLED = 208, TRANSFER_BUSY = 209
+};
+} // namespace protocol
