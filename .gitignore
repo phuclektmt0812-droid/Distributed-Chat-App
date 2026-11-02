@@ -66,3 +66,9 @@ vcpkg_installed/
 # test output & cache
 Testing/
 .cache/
+
+# Runtime outputs
+server_app
+client_agent
+uploads/
+received_files/
