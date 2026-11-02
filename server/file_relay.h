@@ -36,8 +36,7 @@ private:
     };
     static std::string idKey(const std::uint8_t* p);
     static std::uint64_t nowMs();
-    static bool validFilename(const std::string& name);
-    void sendResult(const Transfer& t, std::uint8_t status,
+    void sendResult(const Transfer& transfer, std::uint8_t status,
                     std::uint16_t errorCode, const std::string& detail);
     bool relayUdp(const protocol::Packet& packet,
                   const std::shared_ptr<ClientSession>& destination);

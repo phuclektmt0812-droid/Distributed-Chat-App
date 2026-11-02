@@ -88,6 +88,21 @@ bool sendTcpPacket(SocketHandle socket,const Packet& packet) {
     }
     return true;
 }
+bool sendUdpPacket(SocketHandle socket,const Packet& packet,const sockaddr_in& destination) {
+    if(!isUdpType(packet.type)) return false;
+    Bytes datagram;
+    if(!encodePacket(packet,datagram) || datagram.size()>MAX_UDP_DATAGRAM) return false;
+#ifdef _WIN32
+    const int sent=sendto(socket,reinterpret_cast<const char*>(datagram.data()),
+                          static_cast<int>(datagram.size()),0,
+                          reinterpret_cast<const sockaddr*>(&destination),sizeof(destination));
+    return sent==static_cast<int>(datagram.size());
+#else
+    const auto sent=sendto(socket,datagram.data(),datagram.size(),0,
+                           reinterpret_cast<const sockaddr*>(&destination),sizeof(destination));
+    return sent==static_cast<ssize_t>(datagram.size());
+#endif
+}
 bool decodePacket(const std::uint8_t* data,std::size_t n,Packet& output,std::size_t max_wire) {
     return n<=max_wire && decodePacket(data,n,output);
 }

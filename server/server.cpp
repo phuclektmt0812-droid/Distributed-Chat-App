@@ -2,6 +2,7 @@
 #include "tcp_session.h"
 #include "udp_service.h"
 #include "file_relay.h"
+#include "../protocol/message_payloads.h"
 #include "../protocol/packet.h"
 #include <chrono>
 #include <cstring>
@@ -101,31 +102,37 @@ bool Server::sendTo(const std::shared_ptr<ClientSession>& s,const protocol::Pack
     return protocol::sendTcpPacket(s->socket,p);
 }
 void Server::broadcastUserList() {
-    auto names=users_.usernames();
+    messages::UserList payload;
+    payload.revision=users_.revision();
+    payload.users=users_.usernames();
     protocol::Packet p; p.type=protocol::Type::USER_LIST;
-    protocol::putU32(p.payload,users_.revision());
-    protocol::putU16(p.payload,static_cast<std::uint16_t>(names.size()));
-    for(const auto& n:names) protocol::putString(p.payload,n);
+    if(!messages::encode(payload,p.payload)) return;
     auto clients=users_.snapshot();
     for(auto& s:clients) sendTo(s,p);
 }
 void Server::broadcastMessage(const std::shared_ptr<ClientSession>& sender,
                               std::uint32_t clientId,const std::string& message,
                               std::uint32_t requestSequence) {
-    (void)clientId; // Client ID is retained for API compatibility; server assigns its own ID.
-    protocol::Packet p; p.type=protocol::Type::MSG;
-    protocol::putU32(p.payload,serverMessageId_++);
-    protocol::putString(p.payload,sender->username);
-    auto now=static_cast<std::uint64_t>(
+    messages::ChatEvent event;
+    event.server_id=serverMessageId_.fetch_add(1,std::memory_order_relaxed);
+    event.sender=sender->username;
+    event.server_time_ms=static_cast<std::uint64_t>(
         std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::system_clock::now().time_since_epoch()).count());
-    protocol::putU64(p.payload,now); protocol::putString(p.payload,message);
+    event.text=message;
+    (void)clientId; // Client ID remains in the API; the server assigns its own ID.
+
+    protocol::Packet p; p.type=protocol::Type::MSG;
+    if(!messages::encode(event,p.payload)) return;
     for(auto& s:users_.snapshot()) sendTo(s,p);
+
+    messages::Ack ackPayload;
+    ackPayload.acknowledged_type=static_cast<std::uint8_t>(protocol::Type::MSG);
+    ackPayload.request_sequence=requestSequence;
+    ackPayload.status=1;
+    ackPayload.detail="Broadcast delivered";
     protocol::Packet ack; ack.type=protocol::Type::ACK;
-    ack.payload.push_back(static_cast<std::uint8_t>(protocol::Type::MSG));
-    protocol::putU32(ack.payload,requestSequence); ack.payload.push_back(1);
-    protocol::putString(ack.payload,"Broadcast delivered");
-    sendTo(sender,ack);
+    if(messages::encode(ackPayload,ack.payload)) sendTo(sender,ack);
 }
 void Server::removeSession(const std::shared_ptr<ClientSession>& s) {
     if(!s) return;

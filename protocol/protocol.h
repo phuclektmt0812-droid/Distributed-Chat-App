@@ -5,7 +5,6 @@
 #include <string>
 
 namespace protocol {
-// Small aliases/helpers expected by Member 1's uploaded server source.
 constexpr std::uint16_t TCP_PORT=54000;
 constexpr std::uint16_t UDP_PORT=54001;
 constexpr std::size_t MAX_USERNAME_BYTES=32;
@@ -46,6 +45,7 @@ bool getString(const Bytes& bytes,std::size_t& offset,std::string& output,
 
 bool sendTcpPacket(SocketHandle socket,const Packet& packet);
 bool receiveTcpPacket(SocketHandle socket,Packet& packet);
+bool sendUdpPacket(SocketHandle socket,const Packet& packet,const sockaddr_in& destination);
 bool decodePacket(const std::uint8_t* bytes,std::size_t size,Packet& output,
                   std::size_t max_datagram_size);
 
