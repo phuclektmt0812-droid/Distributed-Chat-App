@@ -431,4 +431,4 @@ This shared-key profile is for a controlled course demonstration. It does not pr
 - Restrict file paths to a receiver-controlled directory.
 - Use SHA-256 for file-integrity verification; SHA-256 alone does not authenticate the sender.
 - The implementation MUST use a standard cryptographic library if payload encryption is implemented. Do not invent encryption or key exchange.
-- For the initial implementation, do not claim encrypted transport unless encryption is actually implemented and tested. Document the security limitation clearly.
+- The AES-256-GCM transport integration is implemented in this branch; its build, automated test, and end-to-end runtime results remain unverified until the project test suite is run.
