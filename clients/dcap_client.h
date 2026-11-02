@@ -2,6 +2,7 @@
 
 #include "../platform/socket_compat.h"
 #include "../protocol/message_payloads.h"
+#include "../protocol/secure_payload.h"
 #include "../protocol/file_messages.h"
 #include "file_sender.h"
 #include "file_receiver.h"
@@ -64,6 +65,7 @@ private:
     std::uint16_t server_port_;
     std::uint16_t udp_port_;
     sockaddr_in server_udp_{};
+    protocol::EncryptionKey encryption_key_{};
 
     SocketHandle tcp_socket_ = INVALID_SOCKET_HANDLE;
     SocketHandle udp_socket_ = INVALID_SOCKET_HANDLE;

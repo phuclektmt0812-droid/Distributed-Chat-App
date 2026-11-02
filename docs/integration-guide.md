@@ -320,7 +320,29 @@ Client Agent
 
 Shared state must be protected. Prefer passing immutable event objects from network threads to the UI state layer. Avoid holding a mutex while calling the browser bridge or blocking socket operations.
 
-## 6. Build and run — Windows, macOS, and Linux
+## 6. Security configuration
+
+The Server and every Client Agent require the same 256-bit pre-shared key. Generate it once on a trusted machine:
+
+```bash
+openssl rand -hex 32
+```
+
+Set the resulting 64-character hexadecimal value in `DCAP_KEY_HEX` in each process environment. PowerShell:
+
+```powershell
+$env:DCAP_KEY_HEX = "<paste-the-generated-64-hex-character-key>"
+```
+
+macOS/Linux:
+
+```bash
+export DCAP_KEY_HEX="<paste-the-generated-64-hex-character-key>"
+```
+
+Set it in the terminal that starts the Server and separately in each Client Agent terminal. Do not commit the key or expose it to the browser. If it is missing or invalid, startup/connection fails; the program never falls back to plaintext.
+
+## 7. Build and run — Windows, macOS, and Linux
 
 The same C++17 source code must build and run on all three target operating-system families. Keep OS-specific socket calls inside `platform/socket_compat.h` and `platform/socket_compat.cpp`; the Server, Client, and Protocol modules must use the shared `SocketHandle` type and portable wrapper functions instead of calling Winsock-only functions directly.
 
@@ -458,7 +480,7 @@ For same-machine testing, connect to `127.0.0.1` (or `localhost`). For LAN testi
 
 Allow inbound TCP port `54000` and UDP port `54001` through the host firewall for LAN tests. Do not expose the UI bridge on a public or LAN interface by default. If port `8080` is already in use, report the error and allow a configured local UI port; do not silently bind to an arbitrary external interface.
 
-## 7. Required end-to-end interaction sequence
+## 8. Required end-to-end interaction sequence
 
 1. Start Server; it binds TCP `54000` and UDP `54001`.
 2. Start Client Agent; it starts local HTTP UI bridge.
@@ -477,7 +499,7 @@ Allow inbound TCP port `54000` and UDP port `54001` through the host firewall fo
 15. Server sends `FILE_RESULT` over TCP to both participants.
 16. On logout/disconnect, Server invalidates session and UDP mapping and broadcasts updated `USER_LIST`.
 
-## 8. Git workflow and integration rules
+## 9. Git workflow and integration rules
 
 1. Keep `main` stable.
 2. Use `dev` as the integration branch.

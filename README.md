@@ -12,6 +12,14 @@ The integrated implementation uses the DCAP v1 wire contract in `docs/protocol-s
 
 Authentication in protocol v1 is username-based. The protocol does not transmit or validate passwords; this is a course prototype, not password-based account security.
 
+## Transport security
+
+All DCAP TCP packets and UDP datagrams use AES-256-GCM authenticated encryption. The 14-byte DCAP header remains visible and is authenticated as GCM additional data; the payload is encrypted. The Server decrypts UDP relay traffic to authorize the transfer and re-encrypts it for the destination client.
+
+The Server and every Client Agent must have the same 32-byte pre-shared key in `DCAP_KEY_HEX` (64 hexadecimal characters). Generate it with `openssl rand -hex 32`; set the environment variable separately for each process before starting it. Never commit the key, put it in source code, or expose it to the browser. The application fails closed if the key is missing or malformed.
+
+This shared-key setup does not provide per-user keys, password authentication, automatic key exchange/rotation, forward secrecy, or replay protection. It is a course-project security profile, not production-grade security.
+
 ## Project structure
 
 - `server/`: TCP sessions, authentication/session management, UDP service, and file relay.

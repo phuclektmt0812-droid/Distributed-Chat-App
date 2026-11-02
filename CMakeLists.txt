@@ -55,5 +55,6 @@ target_include_directories(client_agent PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(client_agent PRIVATE client_file_transfer chat_protocol nlohmann_json::nlohmann_json)
 
 enable_testing()
-# The retained tests target the retired JSON protocol. DCAP-specific tests
-# are still required and will be registered when that suite is added.
+add_executable(dcap_security_tests tests/security_tests.cpp)
+target_link_libraries(dcap_security_tests PRIVATE chat_protocol)
+add_test(NAME dcap_security_tests COMMAND dcap_security_tests)

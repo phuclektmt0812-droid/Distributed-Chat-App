@@ -408,6 +408,22 @@ The detailed lifecycle is in `file-transfer-spec.md`. At a high level: TCP `FILE
 
 Version 1 is a course-project protocol, not a production security protocol.
 
+### 10.1 Authenticated-encryption profile
+
+The integrated implementation applies AES-256-GCM to every TCP packet and UDP datagram:
+
+- The common 14-byte DCAP header remains visible for framing and message-type dispatch.
+- The complete header is authenticated as GCM additional authenticated data (AAD); header tampering causes authentication failure.
+- The wire payload is `nonce[12] | ciphertext[N] | tag[16]`.
+- OpenSSL `RAND_bytes()` generates a fresh 96-bit nonce for every encrypted packet.
+- The 32-byte pre-shared key is loaded from `DCAP_KEY_HEX`, exactly 64 hexadecimal characters. The Server and all Client Agents must use the same value.
+- The Server authenticates/decrypts inbound UDP packets before session and transfer authorization, then encrypts the forwarded packet for its destination.
+- Missing or malformed keys stop Server startup or Client connection. There is no plaintext fallback.
+
+The 14-byte DCAP header and message type registry remain unchanged, but the payload wire representation changes. Plaintext DCAP peers are incompatible with this profile.
+
+This shared-key profile is for a controlled course demonstration. It does not provide per-client key isolation, password-based identity, secure key exchange, key rotation, forward secrecy, or replay protection. A captured valid packet could be replayed unless per-session replay windows are added. Use TLS/DTLS or a reviewed key-establishment design before production use.
+
 - Username-only login identifies an online nickname; it does not prove a real-world identity.
 - UDP registration uses a 32-byte cryptographically random session token delivered over the authenticated TCP connection.
 - Tokens are scoped to a session and invalidated at logout/disconnect.

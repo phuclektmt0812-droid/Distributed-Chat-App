@@ -38,6 +38,8 @@ DcapClient::~DcapClient() { disconnect(); }
 
 bool DcapClient::connect() {
     if (connected_) return true;
+    try { encryption_key_=protocol::readKeyFromEnvironment(); }
+    catch(const std::exception& error) { std::lock_guard<std::mutex> lock(state_mutex_); last_error_=error.what(); return false; }
     if (tcp_thread_.joinable() || udp_thread_.joinable() || maintenance_thread_.joinable() ||
         tcp_socket_ != INVALID_SOCKET_HANDLE || udp_socket_ != INVALID_SOCKET_HANDLE) {
         disconnect();
@@ -146,14 +148,14 @@ bool DcapClient::sendTcp(protocol::Packet packet) {
     if (!connected_ || tcp_socket_ == INVALID_SOCKET_HANDLE) return false;
     if (packet.sequence == 0) packet.sequence = tcp_sequence_.next();
     std::lock_guard<std::mutex> lock(tcp_send_mutex_);
-    return protocol::sendTcpPacket(tcp_socket_, packet);
+    return protocol::sendTcpPacketSecure(tcp_socket_, packet, encryption_key_);
 }
 
 bool DcapClient::sendUdp(protocol::Packet packet) {
     if (!connected_ || udp_socket_ == INVALID_SOCKET_HANDLE) return false;
     packet.sequence = udp_sequence_.next();
     std::lock_guard<std::mutex> lock(udp_send_mutex_);
-    return protocol::sendUdpPacket(udp_socket_, packet, server_udp_);
+    return protocol::sendUdpPacketSecure(udp_socket_, packet, server_udp_, encryption_key_);
 }
 
 bool DcapClient::sendGlobal(const std::string& text) {
@@ -242,7 +244,7 @@ bool DcapClient::decideFile(const std::string& id, bool accept) {
 void DcapClient::tcpLoop() {
     while (running_) {
         protocol::Packet packet;
-        if (!protocol::receiveTcpPacket(tcp_socket_, packet)) break;
+        if (!protocol::receiveTcpPacketSecure(tcp_socket_, packet, encryption_key_)) break;
         handleTcp(packet);
     }
     if (running_.exchange(false)) {
@@ -269,7 +271,7 @@ void DcapClient::udpLoop() {
             continue;
         }
         protocol::Packet packet;
-        if (protocol::decodeDatagram(buffer, static_cast<std::size_t>(received), packet))
+        if (protocol::decodeSecureDatagram(buffer, static_cast<std::size_t>(received), encryption_key_, packet))
             handleUdp(packet);
     }
 }

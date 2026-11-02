@@ -1,5 +1,6 @@
 #pragma once
 #include "packet.h"
+#include "secure_payload.h"
 #include "../platform/socket_compat.h"
 #include <cstdint>
 #include <string>
@@ -46,6 +47,10 @@ bool getString(const Bytes& bytes,std::size_t& offset,std::string& output,
 bool sendTcpPacket(SocketHandle socket,const Packet& packet);
 bool receiveTcpPacket(SocketHandle socket,Packet& packet);
 bool sendUdpPacket(SocketHandle socket,const Packet& packet,const sockaddr_in& destination);
+bool sendTcpPacketSecure(SocketHandle socket,const Packet& packet,const EncryptionKey& key);
+bool receiveTcpPacketSecure(SocketHandle socket,Packet& packet,const EncryptionKey& key);
+bool sendUdpPacketSecure(SocketHandle socket,const Packet& packet,const sockaddr_in& destination,const EncryptionKey& key);
+bool decodeSecureDatagram(const std::uint8_t* bytes,std::size_t size,const EncryptionKey& key,Packet& output);
 bool decodePacket(const std::uint8_t* bytes,std::size_t size,Packet& output,
                   std::size_t max_datagram_size);
 

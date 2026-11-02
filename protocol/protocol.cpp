@@ -103,6 +103,49 @@ bool sendUdpPacket(SocketHandle socket,const Packet& packet,const sockaddr_in& d
     return sent==static_cast<ssize_t>(datagram.size());
 #endif
 }
+bool sendTcpPacketSecure(SocketHandle socket,const Packet& packet,const EncryptionKey& key) {
+    if(!isTcpType(packet.type)) return false;
+    Bytes frame;
+    if(!encodeSecurePacket(packet,key,frame)) return false;
+    std::size_t offset=0;
+    while(offset<frame.size()) {
+        const auto amount=static_cast<int>(std::min<std::size_t>(frame.size()-offset,INT_MAX));
+#ifdef _WIN32
+        const int n=send(socket,reinterpret_cast<const char*>(frame.data()+offset),amount,0);
+#else
+        const int n=static_cast<int>(send(socket,frame.data()+offset,static_cast<std::size_t>(amount),0));
+#endif
+        if(n<=0) { if(n<0 && isInterruptedError(lastSocketError())) continue; return false; }
+        offset+=static_cast<std::size_t>(n);
+    }
+    return true;
+}
+bool receiveTcpPacketSecure(SocketHandle socket,Packet& packet,const EncryptionKey& key) {
+    std::uint8_t header[HEADER_SIZE]{};
+    if(!readExactly(socket,header,sizeof(header))) return false;
+    if(readU32(header)!=MAGIC || header[4]!=VERSION || !isTcpType(static_cast<Type>(header[5]))) return false;
+    const auto length=readU32(header+10);
+    if(length<28 || length>MAX_TCP_PAYLOAD) return false;
+    Bytes frame(header,header+sizeof(header));
+    frame.resize(HEADER_SIZE+length);
+    if(!readExactly(socket,frame.data()+HEADER_SIZE,length)) return false;
+    return decodeSecurePacket(frame.data(),frame.size(),key,packet);
+}
+bool sendUdpPacketSecure(SocketHandle socket,const Packet& packet,const sockaddr_in& destination,const EncryptionKey& key) {
+    if(!isUdpType(packet.type)) return false;
+    Bytes datagram;
+    if(!encodeSecurePacket(packet,key,datagram) || datagram.size()>MAX_UDP_DATAGRAM) return false;
+#ifdef _WIN32
+    const int sent=sendto(socket,reinterpret_cast<const char*>(datagram.data()),static_cast<int>(datagram.size()),0,reinterpret_cast<const sockaddr*>(&destination),sizeof(destination));
+    return sent==static_cast<int>(datagram.size());
+#else
+    const auto sent=sendto(socket,datagram.data(),datagram.size(),0,reinterpret_cast<const sockaddr*>(&destination),sizeof(destination));
+    return sent==static_cast<ssize_t>(datagram.size());
+#endif
+}
+bool decodeSecureDatagram(const std::uint8_t* bytes,std::size_t size,const EncryptionKey& key,Packet& output) {
+    return size<=MAX_UDP_DATAGRAM && decodeSecurePacket(bytes,size,key,output) && isUdpType(output.type);
+}
 bool decodePacket(const std::uint8_t* data,std::size_t n,Packet& output,std::size_t max_wire) {
     return n<=max_wire && decodePacket(data,n,output);
 }

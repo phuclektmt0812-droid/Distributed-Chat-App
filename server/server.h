@@ -27,11 +27,14 @@ public:
     void removeSession(const std::shared_ptr<ClientSession>& session);
     bool running() const { return running_; }
     SocketHandle udpSocket() const { return udpSocket_; }
+    const protocol::EncryptionKey& encryptionKey() const { return encryptionKey_; }
+    bool sendUdpTo(const protocol::Packet& packet,const sockaddr_in& destination);
 private:
     void acceptLoop();
     void udpLoop();
     void maintenanceLoop();
     UserManager users_;
+    protocol::EncryptionKey encryptionKey_{};
     SocketHandle tcpListener_=INVALID_SOCKET_HANDLE;
     SocketHandle udpSocket_=INVALID_SOCKET_HANDLE;
     std::atomic<bool> running_{false};

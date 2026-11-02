@@ -174,7 +174,7 @@ bool FileRelay::handleTcpCancel(const Packet& p,const std::shared_ptr<ClientSess
 }
 bool FileRelay::relayUdp(const Packet& p,const std::shared_ptr<ClientSession>& dst) {
     return dst && dst->udpRegistered &&
-           protocol::sendUdpPacket(server_.udpSocket(),p,dst->udpEndpoint);
+           server_.sendUdpTo(p,dst->udpEndpoint);
 }
 void FileRelay::handleUdp(const Packet& p,const std::shared_ptr<ClientSession>& source) {
     if(!source || p.payload.size()<16) return;

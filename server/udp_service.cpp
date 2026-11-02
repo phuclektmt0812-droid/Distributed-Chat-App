@@ -13,7 +13,7 @@ static std::uint64_t udpNowMs() {
 }
 void UdpService::handle(const std::uint8_t* data,std::size_t len,const sockaddr_in& src) {
     Packet p;
-    if(!decodePacket(data,len,p,MAX_UDP_DATAGRAM) || !isUdpType(p.type)) return;
+    if(!decodeSecureDatagram(data,len,server_.encryptionKey(),p)) return;
 
     if(p.type==Type::UDP_REGISTER) {
         messages::UdpRegister request;
@@ -24,7 +24,7 @@ void UdpService::handle(const std::uint8_t* data,std::size_t len,const sockaddr_
         response.code=ok?0:ERR_INVALID_SESSION;
         Packet reply; reply.type=Type::UDP_REGISTER_OK;
         if(messages::encode(response,reply.payload))
-            sendUdpPacket(server_.udpSocket(),reply,src);
+            server_.sendUdpTo(reply,src);
         return;
     }
 
@@ -41,7 +41,7 @@ void UdpService::handle(const std::uint8_t* data,std::size_t len,const sockaddr_
         response.server_time_ms=udpNowMs();
         Packet ack; ack.type=Type::HEARTBEAT_ACK;
         if(messages::encode(response,ack.payload))
-            sendUdpPacket(server_.udpSocket(),ack,src);
+            server_.sendUdpTo(ack,src);
         return;
     }
 

@@ -20,7 +20,7 @@ TcpSession::TcpSession(Server& s,SocketHandle fd):server_(s),socket_(fd){}
 void TcpSession::sendAuthFail(std::uint16_t code,const std::string& reason) {
     Packet p; p.type=Type::AUTH_FAIL;
     if(!messages::encode(messages::AuthFail{code,reason},p.payload)) return;
-    sendTcpPacket(socket_,p);
+    sendTcpPacketSecure(socket_,p,server_.encryptionKey());
 }
 bool TcpSession::authenticate(Packet& first) {
     if(first.type!=Type::AUTH) {
@@ -157,7 +157,7 @@ void TcpSession::run() {
         shutdownSocket(socket_); closeSocket(socket_); return;
     }
     Packet p;
-    while(server_.running() && receiveTcpPacket(socket_,p)) {
+    while(server_.running() && receiveTcpPacketSecure(socket_,p,server_.encryptionKey())) {
         if(isUdpType(p.type)) break;
         handle(p);
     }

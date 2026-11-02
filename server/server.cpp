@@ -17,6 +17,8 @@ FileRelay& Server::fileRelay() { return *fileRelay_; }
 
 bool Server::start() {
     if(running_) return true;
+    try { encryptionKey_=protocol::readKeyFromEnvironment(); }
+    catch(const std::exception& error) { std::cerr<<"[SECURITY] "<<error.what()<<std::endl; return false; }
     tcpListener_=socket(AF_INET,SOCK_STREAM,IPPROTO_TCP);
     udpSocket_=socket(AF_INET,SOCK_DGRAM,IPPROTO_UDP);
     if(tcpListener_==INVALID_SOCKET_HANDLE || udpSocket_==INVALID_SOCKET_HANDLE) {
@@ -99,7 +101,11 @@ void Server::maintenanceLoop() {
 bool Server::sendTo(const std::shared_ptr<ClientSession>& s,const protocol::Packet& p) {
     if(!s || s->socket==INVALID_SOCKET_HANDLE) return false;
     std::lock_guard<std::mutex> lock(s->sendMutex);
-    return protocol::sendTcpPacket(s->socket,p);
+    return protocol::sendTcpPacketSecure(s->socket,p,encryptionKey_);
+}
+bool Server::sendUdpTo(const protocol::Packet& p,const sockaddr_in& destination) {
+    if(udpSocket_==INVALID_SOCKET_HANDLE) return false;
+    return protocol::sendUdpPacketSecure(udpSocket_,p,destination,encryptionKey_);
 }
 void Server::broadcastUserList() {
     messages::UserList payload;
