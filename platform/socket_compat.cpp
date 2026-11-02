@@ -60,6 +60,7 @@ bool receiveExact(SocketHandle s, std::uint8_t* data, std::size_t length) {
 #include <cerrno>
 #include <fcntl.h>
 #include <signal.h>
+#include <sys/time.h>
 bool initializeSocketRuntime() {
     signal(SIGPIPE, SIG_IGN);
     return true;
