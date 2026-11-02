@@ -68,6 +68,7 @@ Testing/
 .cache/
 
 # Runtime outputs
+dcap.key
 server_app
 client_agent
 uploads/
