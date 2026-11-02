@@ -1,6 +1,7 @@
 #include "dcap_client.h"
 
 #include "../protocol/packet.h"
+#include "../protocol/protocol.h"
 #include <algorithm>
 #include <chrono>
 #include <cstring>
@@ -42,6 +43,7 @@ bool DcapClient::connect() {
         return false;
     }
 
+    socket_runtime_initialized_ = true;
     addrinfo hints{};
     hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_STREAM;
@@ -92,6 +94,13 @@ bool DcapClient::connect() {
         return false;
     }
     udpDestination.sin_port = htons(udp_port_);
+#ifdef _WIN32
+    DWORD timeoutMs = 1000;
+    setsockopt(udp, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&timeoutMs), sizeof(timeoutMs));
+#else
+    timeval timeout{1,0};
+    setsockopt(udp, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+#endif
 
     tcp_socket_ = tcp;
     udp_socket_ = udp;
@@ -496,4 +505,5 @@ void DcapClient::disconnect() {
         senders_.clear(); receivers_.clear(); incoming_offers_.clear();
     }
     if (wasRunning) emit("DISCONNECTED");
+    if (socket_runtime_initialized_.exchange(false)) cleanupSocketRuntime();
 }

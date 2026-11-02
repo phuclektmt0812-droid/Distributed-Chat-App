@@ -71,6 +71,7 @@ private:
     std::atomic<bool> authenticated_{false};
     std::atomic<bool> running_{false};
     std::atomic<bool> udp_registered_{false};
+    std::atomic<bool> socket_runtime_initialized_{false};
 
     mutable std::mutex state_mutex_;
     std::string username_;

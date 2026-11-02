@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <fstream>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 
 #ifdef _WIN32
@@ -18,6 +19,7 @@
 
 using nlohmann::json;
 namespace {
+std::uint64_t nowMs() { return static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count()); }
 constexpr std::size_t MAX_HEADER = 16384;
 constexpr std::size_t MAX_BODY = 110ULL * 1024ULL * 1024ULL;
 bool sendBytes(SocketHandle s, const char* data, std::size_t size) {
