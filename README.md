@@ -36,15 +36,3 @@ The application aims to support real-time messaging, active user discovery, reli
 
 ## 6. Build and Run
 Build and run instructions will be added after the initial implementation is completed.
-
-## 7. Web client
-Serve the `web/` directory from a local HTTP server and enter the HTTP bridge
-address in the sign-in form. The client uses the bridge's current root routes:
-`/login`, `/logout`, `/global_message`, `/private_message`, `/user_list`,
-`/events`, `/status`, and `/file_upload`. The bridge only permits browser
-origins on `localhost` or `127.0.0.1`.
-
-The file picker reports browser-to-bridge upload progress separately from UDP
-delivery. The current bridge responds that file upload is not yet integrated;
-an upload response or browser progress must not be treated as recipient
-confirmation.

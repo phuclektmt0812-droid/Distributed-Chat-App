@@ -1,54 +1,39 @@
 #pragma once
-
-#include <winsock2.h>
-#include <string>
-#include <vector>
-#include <unordered_map>
-#include <mutex>
-#include <memory>
-#include <chrono>
+#include "../platform/socket_compat.h"
+#include <array>
 #include <cstdint>
-#include <optional>
-#include <algorithm>
-#include <utility>
+#include <memory>
+#include <mutex>
+#include <string>
+#include <unordered_map>
+#include <vector>
 
-using namespace std;
-class ClientSession;
-
-struct UserInfo {
-    string username;
-
-    weak_ptr<ClientSession> session;
-
-    string ipAddress;
-
-    uint16_t tcpPort;
-    uint16_t udpPort;
-
-    chrono::steady_clock::time_point lastHeartbeat;
+struct ClientSession {
+    std::string username;
+    SocketHandle socket = INVALID_SOCKET_HANDLE;
+    std::array<std::uint8_t,16> sessionId{};
+    std::array<std::uint8_t,32> udpToken{};
+    sockaddr_in udpEndpoint{};
+    bool authenticated=false;
+    bool udpRegistered=false;
+    std::uint64_t lastHeartbeatMs=0;
+    std::mutex sendMutex;
 };
 
 class UserManager {
-private:
-    unordered_map<string, UserInfo> users;
-    mutable mutex usersMutex;
-
 public:
-    bool addUser(const UserInfo& user);
-
-    bool removeUser(const string& username);
-
-    optional<UserInfo> findUser(
-        const string& username
-    ) const;
-
-    bool isOnline(const string& username) const;
-
-    vector<string> getOnlineUsers() const;
-
-    void updateHeartbeat(const string& username);
-
-    vector<string> removeExpiredUsers(
-        chrono::seconds timeout
-    );
+    bool add(const std::shared_ptr<ClientSession>& session);
+    void remove(const std::string& username);
+    std::shared_ptr<ClientSession> find(const std::string& username);
+    std::vector<std::shared_ptr<ClientSession>> snapshot();
+    std::vector<std::string> usernames();
+    bool bindUdp(const std::array<std::uint8_t,32>& token,
+                 const sockaddr_in& endpoint);
+    std::shared_ptr<ClientSession> findByUdpEndpoint(const sockaddr_in& endpoint);
+    std::vector<std::shared_ptr<ClientSession>> expiredUdp(std::uint64_t nowMs);
+    std::uint32_t revision() const;
+private:
+    mutable std::mutex mutex_;
+    std::unordered_map<std::string,std::shared_ptr<ClientSession>> users_;
+    std::uint32_t revision_=0;
 };

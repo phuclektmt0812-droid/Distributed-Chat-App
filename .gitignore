@@ -66,32 +66,3 @@ vcpkg_installed/
 # test output & cache
 Testing/
 .cache/
-# Compiled executables
-*.exe
-*.obj
-*.o
-*.pdb
-
-# Build directories
-build/
-out/
-Debug/
-Release/
-x64/
-x86/
-
-# IDE files
-.vs/
-.vscode/
-
-# Logs
-*.log
-
-# Temporary transfers
-temp/
-uploads/
-received_files/
-
-# Local configuration
-.env
-config.local.json

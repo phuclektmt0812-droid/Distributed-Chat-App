@@ -1,94 +1,65 @@
-#include "../server/user_manager.h"
+#include "user_manager.h"
+#include <algorithm>
+#include <cstring>
 
-bool UserManager::addUser(const UserInfo& user) {
-    if (user.username.empty()) {
-        return false;
-    }
-
-    lock_guard<mutex> lock(usersMutex);
-
-    // The username is the unique key.
-    if (users.find(user.username) != users.end()) {
-        return false;
-    }
-
-    users.emplace(user.username, user);
-
-    return true;
+bool UserManager::add(const std::shared_ptr<ClientSession>& s) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if(users_.count(s->username)) return false;
+    users_[s->username]=s; ++revision_; return true;
 }
-
-bool UserManager::removeUser(const string& username) {
-    lock_guard<mutex> lock(usersMutex);
-
-    return users.erase(username) > 0;
+void UserManager::remove(const std::string& name) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if(users_.erase(name)) ++revision_;
 }
-
-optional<UserInfo> UserManager::findUser(
-    const string& username
-) const {
-    lock_guard<mutex> lock(usersMutex);
-
-    auto it = users.find(username);
-
-    if (it == users.end()) {
-        return nullopt;
-    }
-
-    return it->second;
+std::shared_ptr<ClientSession> UserManager::find(const std::string& name) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto it=users_.find(name); return it==users_.end()?nullptr:it->second;
 }
-
-bool UserManager::isOnline(const string& username) const {
-    lock_guard<mutex> lock(usersMutex);
-
-    return users.find(username) != users.end();
+std::vector<std::shared_ptr<ClientSession>> UserManager::snapshot() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    std::vector<std::shared_ptr<ClientSession>> v;
+    for(auto& p:users_) v.push_back(p.second);
+    return v;
 }
-
-vector<string> UserManager::getOnlineUsers() const {
-    lock_guard<mutex> lock(usersMutex);
-
-    vector<string> onlineUsers;
-    onlineUsers.reserve(users.size());
-
-    for (const auto& entry : users) {
-        onlineUsers.push_back(entry.first);
-    }
-
-    sort(onlineUsers.begin(), onlineUsers.end());
-
-    return onlineUsers;
+std::vector<std::string> UserManager::usernames() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    std::vector<std::string> v;
+    for(auto& p:users_) v.push_back(p.first);
+    std::sort(v.begin(),v.end()); return v;
 }
-
-void UserManager::updateHeartbeat(const string& username) {
-    lock_guard<mutex> lock(usersMutex);
-
-    auto it = users.find(username);
-
-    if (it != users.end()) {
-        it->second.lastHeartbeat =
-            chrono::steady_clock::now();
-    }
-}
-
-vector<string> UserManager::removeExpiredUsers(
-    chrono::seconds timeout
-) {
-    vector<string> expiredUsers;
-
-    const auto now = chrono::steady_clock::now();
-
-    lock_guard<mutex> lock(usersMutex);
-
-    for (auto it = users.begin(); it != users.end();) {
-        const auto elapsed =
-            now - it->second.lastHeartbeat;
-
-        if (elapsed >= timeout) {
-            expiredUsers.push_back(it->first);
-            it = users.erase(it);
-        } else {
-            ++it;
+bool UserManager::bindUdp(const std::array<std::uint8_t,32>& token,
+                          const sockaddr_in& endpoint) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    for(auto& p:users_) {
+        auto& s=p.second;
+        if(s->udpToken==token) {
+            s->udpEndpoint=endpoint; s->udpRegistered=true;
+            s->lastHeartbeatMs=0; return true;
         }
     }
-
-    return expiredUsers;
+    return false;
+}
+std::shared_ptr<ClientSession> UserManager::findByUdpEndpoint(const sockaddr_in& ep) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    for(auto& p:users_) {
+        auto s=p.second;
+        if(s->udpRegistered && s->udpEndpoint.sin_addr.s_addr==ep.sin_addr.s_addr &&
+           s->udpEndpoint.sin_port==ep.sin_port) return s;
+    }
+    return nullptr;
+}
+std::vector<std::shared_ptr<ClientSession>> UserManager::expiredUdp(std::uint64_t now) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    std::vector<std::shared_ptr<ClientSession>> out;
+    for(auto& p:users_) {
+        auto s=p.second;
+        if(s->udpRegistered && s->lastHeartbeatMs &&
+           now-s->lastHeartbeatMs>15000) {
+            s->udpRegistered=false; out.push_back(s);
+        }
+    }
+    return out;
+}
+std::uint32_t UserManager::revision() const {
+    std::lock_guard<std::mutex> lock(mutex_); return revision_;
 }
