@@ -152,7 +152,7 @@ void TcpSession::handle(const Packet& p) {
 }
 void TcpSession::run() {
     Packet first;
-    if(!receiveTcpPacket(socket_,first) || !authenticate(first)) {
+    if(!receiveTcpPacketSecure(socket_,first,server_.encryptionKey()) || !authenticate(first)) {
         if(session_) server_.removeSession(session_);
         shutdownSocket(socket_); closeSocket(socket_); return;
     }
