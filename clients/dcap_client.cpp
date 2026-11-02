@@ -476,6 +476,13 @@ void DcapClient::handleUdp(const protocol::Packet& packet) {
         } else if (receiver->second->state() == filetransfer::ReceiverState::FAILED) {
             emit("ERROR", {{"error", receiver->second->lastError()}, {"transferId", id}});
             receivers_.erase(receiver);
+        } else {
+            const auto total = receiver->second->totalBytes();
+            const auto received = receiver->second->receivedBytes();
+            const double progress = total ? (100.0 * received / total) : 0.0;
+            emit("FILE_PROGRESS", {{"transferId", id},
+                {"filename", receiver->second->filename()}, {"progress", progress},
+                {"status", "Receiving"}});
         }
     }
 }

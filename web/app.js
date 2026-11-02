@@ -406,6 +406,9 @@ function handleEvent(event) {
             const transferId = data && (data.transfer_id || data.transferId);
             if (!transferId) break;
             const filename = typeof data.filename === "string" ? data.filename : "a file";
+            const incoming = findOrCreateTransfer({ transferId: transferId, filename });
+            incoming.status = "Incoming offer";
+            renderTransfers();
             const size = Number(data.size || 0);
             const sizeLabel = size > 0 ? ` (${(size / 1024 / 1024).toFixed(2)} MB)` : "";
             const accepted = window.confirm(`Incoming file offer: ${filename}${sizeLabel}. Accept this file?`);

@@ -28,6 +28,7 @@ public:
     ReceiverState state() const { return state_; }
     std::uint64_t receivedBytes() const { return received_bytes_; }
     std::uint64_t totalBytes() const { return offer_.size; }
+    const std::string& filename() const { return offer_.filename; }
     std::filesystem::path completedPath() const { return completed_path_; }
     const std::string& lastError() const { return error_; }
 
