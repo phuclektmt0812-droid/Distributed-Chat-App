@@ -26,6 +26,11 @@ bool Server::start() {
         std::cerr<<"[ERROR] socket() failed: "<<lastSocketError()<<std::endl; stop(); return false;
     }
     setReuseAddress(tcpListener_); setReuseAddress(udpSocket_);
+    // Periodic socket wakeups let stop() join network threads promptly on all platforms.
+    if(!setSocketTimeout(tcpListener_,1000,0) || !setSocketTimeout(udpSocket_,1000,0)) {
+        std::cerr<<"[ERROR] Could not configure listener timeouts: "<<lastSocketError()<<std::endl;
+        stop(); return false;
+    }
     sockaddr_in tcp{}; tcp.sin_family=AF_INET; tcp.sin_port=htons(protocol::TCP_PORT);
     tcp.sin_addr.s_addr=htonl(INADDR_ANY);
     sockaddr_in udp{}; udp.sin_family=AF_INET; udp.sin_port=htons(protocol::UDP_PORT);
