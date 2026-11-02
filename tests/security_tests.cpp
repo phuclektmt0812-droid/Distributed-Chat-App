@@ -22,6 +22,13 @@ int main() {
     assert(!protocol::decodeSecurePacket(tampered.data(),tampered.size(),key,rejected));
     tampered=wire; tampered[6]^=0x01;
     assert(!protocol::decodeSecurePacket(tampered.data(),tampered.size(),key,rejected));
-    std::cout<<"DCAP AES-256-GCM tests passed\n";
+    const auto keyPath=std::filesystem::temp_directory_path()/
+        ("dcap-key-test-"+protocol::generateKeyHex()+".key");
+    const auto created=protocol::loadOrCreateKeyFile(keyPath.string());
+    const auto loaded=protocol::readKeyFromFile(keyPath.string());
+    const auto reused=protocol::loadOrCreateKeyFile(keyPath.string());
+    assert(created==loaded && loaded==reused);
+    std::filesystem::remove(keyPath);
+    std::cout<<"DCAP AES-256-GCM and key-file tests passed\n";
     return 0;
 }
