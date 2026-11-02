@@ -64,6 +64,8 @@ public:
         const string& requestBody
     );
 
+    void handleLogout(SOCKET clientSocket);
+
     void handleGlobalMessage(
         SOCKET clientSocket,
         const string& requestBody

@@ -109,8 +109,11 @@ bool ChatClient::login(
 }
 
 void ChatClient::logout() {
+    running = false;
+    fileResponseChanged.notify_all();
     if (!connection.isConnected()) {
         authenticated = false;
+        username.clear();
         return;
     }
 

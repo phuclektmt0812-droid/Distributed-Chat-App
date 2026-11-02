@@ -461,6 +461,8 @@ void HttpBridge::handleHttpRequest(
 
     if (method == "POST" && path == "/login") {
         handleLogin(clientSocket, body);
+    } else if (method == "POST" && path == "/logout") {
+        handleLogout(clientSocket);
     } else if (method == "POST" && path == "/global_message") {
         handleGlobalMessage(clientSocket, body);
     } else if (method == "POST" && path == "/private_message") {
@@ -573,6 +575,21 @@ void HttpBridge::handleLogin(
     sessionAuthenticated = false;
     sessionUsername.clear();
     sendJsonError(this, clientSocket, 504, lastConnectionError);
+}
+
+void HttpBridge::handleLogout(SOCKET clientSocket) {
+    std::lock_guard<std::mutex> lock(sessionMutex);
+    chatClient.logout();
+    sessionAuthenticated = false;
+    sessionUsername.clear();
+    latestUserList = nlohmann::json::array();
+    pendingEvents.clear();
+    sendHttpResponse(
+        clientSocket,
+        200,
+        "application/json",
+        jsonResponse({{"authenticated", false}})
+    );
 }
 
 void HttpBridge::handleGlobalMessage(
