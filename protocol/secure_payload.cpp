@@ -52,10 +52,12 @@ EncryptionKey readKeyFromFile(const std::string& path) {
     std::ifstream input(path,std::ios::binary);
     if(!input) throw std::runtime_error("Cannot open key file '"+path+"'. Start the Server first or copy its key file securely.");
     std::string hex;
-    input >> hex;
+    if(!std::getline(input,hex) || input.bad())
+        throw std::invalid_argument("Key file '"+path+"' is empty or unreadable");
+    if(!hex.empty() && hex.back()=='\\r') hex.pop_back();
     std::string extra;
-    if(!input || (input >> extra))
-        throw std::invalid_argument("Key file '"+path+"' is empty or contains unexpected data");
+    if(std::getline(input,extra) && !extra.empty())
+        throw std::invalid_argument("Key file '"+path+"' contains unexpected extra data");
 #ifndef _WIN32
     struct stat info{};
     if(::stat(path.c_str(),&info)==0 && (info.st_mode & (S_IRWXG|S_IRWXO))!=0)
