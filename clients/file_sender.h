@@ -27,6 +27,7 @@ public:
     std::vector<protocol::Packet> poll(TimePoint now);
     void cancel();
     void failFromServer(const std::string& reason) { fail(reason); }
+    void completeFromServer() { state_ = SenderState::COMPLETED; }
 
     SenderState state() const { return state_; }
     std::uint64_t acknowledgedBytes() const { return acknowledged_bytes_; }

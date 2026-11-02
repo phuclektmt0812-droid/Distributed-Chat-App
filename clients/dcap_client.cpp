@@ -387,16 +387,31 @@ void DcapClient::handleTcp(const protocol::Packet& packet) {
         fileproto::Result result;
         if (!fileproto::decode(packet.payload, result)) break;
         const auto id = fileproto::idHex(result.id);
-        if (result.status != 1) {
+        bool senderFound = false;
+        {
             std::lock_guard<std::mutex> lock(transfers_mutex_);
             auto sender = senders_.find(id);
-            if (sender != senders_.end()) { sender->second->failFromServer(result.detail); senders_.erase(sender); }
+            if (sender != senders_.end()) {
+                senderFound = true;
+                if (result.status == 1) sender->second->completeFromServer();
+                else sender->second->failFromServer(result.detail);
+                senders_.erase(sender);
+            }
             auto receiver = receivers_.find(id);
-            if (receiver != receivers_.end()) { receiver->second->cancel(); receivers_.erase(receiver); }
+            if (result.status != 1 && receiver != receivers_.end()) {
+                receiver->second->cancel();
+                receivers_.erase(receiver);
+            }
+            for (auto pending = pending_file_offers_.begin(); pending != pending_file_offers_.end();) {
+                if (pending->second == id) pending = pending_file_offers_.erase(pending);
+                else ++pending;
+            }
         }
-        emit(result.status == 1 ? "FILE_COMPLETE" : "FILE_RESULT",
-            {{"transferId", id}, {"transfer_id", id}, {"status", result.status},
-             {"progress", result.status == 1 ? 100 : 0}, {"detail", result.detail}});
+        if (result.status != 1 || senderFound) {
+            emit(result.status == 1 ? "FILE_COMPLETE" : "FILE_RESULT",
+                {{"transferId", id}, {"transfer_id", id}, {"status", result.status},
+                 {"progress", result.status == 1 ? 100 : 0}, {"detail", result.detail}});
+        }
         break;
     }
     case protocol::Type::ERROR: {
