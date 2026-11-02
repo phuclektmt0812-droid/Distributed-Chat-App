@@ -31,7 +31,7 @@ This shared-key setup does not provide per-user keys, password authentication, a
 - `clients/client_agent_main.cpp`: starts the local Client Agent.
 - `web/`: HTML/CSS/JS interface retained and connected to the DCAP HTTP bridge.
 - `clients/client.*`, `clients/connection.*`, `clients/http_bridge.*`, and `protocol/message.*`: legacy JSON implementation retained for reference; not used by the DCAP targets.
-- `tests/`: previous JSON-protocol tests retained for reference. DCAP-specific tests have not yet been added.
+- `tests/`: previous JSON-protocol tests retained for reference, plus `dcap_security_tests` for AES-256-GCM round-trip and tamper rejection.
 
 ## Build requirements
 
