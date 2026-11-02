@@ -2,6 +2,7 @@
 
 #include "packet.h"
 #include <array>
+#include <string>
 
 namespace protocol {
 using EncryptionKey = std::array<std::uint8_t, 32>;
