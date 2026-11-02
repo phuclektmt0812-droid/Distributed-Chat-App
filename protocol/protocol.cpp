@@ -78,7 +78,7 @@ bool sendTcpPacket(SocketHandle socket,const Packet& packet) {
         const int n=send(socket,reinterpret_cast<const char*>(frame.data()+offset),amount,0);
 #else
         const int n=static_cast<int>(send(socket,frame.data()+offset,
-                                         static_cast<std::size_t>(amount),MSG_NOSIGNAL));
+                                         static_cast<std::size_t>(amount),0));
 #endif
         if(n<=0) {
             if(n<0 && isInterruptedError(lastSocketError())) continue;

@@ -57,7 +57,7 @@ bool setReuseAddress(SocketHandle s) {
 bool sendAll(SocketHandle s, const std::uint8_t* data, std::size_t length) {
     std::size_t sent = 0;
     while (sent < length) {
-        ssize_t n = send(s, data + sent, length - sent, MSG_NOSIGNAL);
+        ssize_t n = send(s, data + sent, length - sent, 0);
         if (n < 0 && errno == EINTR) continue;
         if (n <= 0) return false;
         sent += static_cast<std::size_t>(n);
