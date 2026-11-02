@@ -17,7 +17,8 @@ FileRelay& Server::fileRelay() { return *fileRelay_; }
 
 bool Server::start() {
     if(running_) return true;
-    try { encryptionKey_=protocol::readKeyFromEnvironment(); }
+    try { encryptionKey_=protocol::loadOrCreateKeyFile(protocol::keyFilePathFromEnvironment());
+        std::cout<<"[SECURITY] Using persistent key file: "<<protocol::keyFilePathFromEnvironment()<<std::endl; }
     catch(const std::exception& error) { std::cerr<<"[SECURITY] "<<error.what()<<std::endl; return false; }
     tcpListener_=socket(AF_INET,SOCK_STREAM,IPPROTO_TCP);
     udpSocket_=socket(AF_INET,SOCK_DGRAM,IPPROTO_UDP);
