@@ -38,7 +38,7 @@ DcapClient::~DcapClient() { disconnect(); }
 
 bool DcapClient::connect() {
     if (connected_) return true;
-    try { encryption_key_=protocol::readKeyFromEnvironment(); }
+    try { encryption_key_=protocol::readKeyFromFile(protocol::keyFilePathFromEnvironment()); }
     catch(const std::exception& error) { std::lock_guard<std::mutex> lock(state_mutex_); last_error_=error.what(); return false; }
     if (tcp_thread_.joinable() || udp_thread_.joinable() || maintenance_thread_.joinable() ||
         tcp_socket_ != INVALID_SOCKET_HANDLE || udp_socket_ != INVALID_SOCKET_HANDLE) {
