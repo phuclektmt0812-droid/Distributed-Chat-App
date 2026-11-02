@@ -16,7 +16,7 @@ int main(int argc,char** argv) {
     }
     std::cout << "Client Agent ready. Server " << serverAddress << ":" << serverPort
               << ", local UI bridge http://127.0.0.1:" << httpPort << "\n";
-    std::cout << "Open http://127.0.0.1:<< httpPort <</ in a browser and press ENTER here to stop.\n";
+    std::cout << "Open http://127.0.0.1:" << httpPort << "/ in a browser and press ENTER here to stop.\n";
     std::cin.get();
     bridge.stop();
     return 0;
