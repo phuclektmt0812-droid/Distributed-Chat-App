@@ -1,29 +1,21 @@
-# Test scenarios
+# Test status
 
-Build and run the automated tests on Windows with CMake, a C++17 compiler, and
-the `nlohmann_json` CMake package available:
+The test sources currently in this directory were written for the previous
+length-prefixed JSON protocol from the original dev branch. They are retained
+for reference but are not registered in the current DCAP CMake configuration.
 
-```powershell
-cmake -S . -B build
-cmake --build build --config Debug
-ctest --test-dir build -C Debug --output-on-failure
-```
+Do not use the old CTest instructions or treat these tests as validation of the
+DCAP server. The DCAP integration still needs dedicated tests for:
 
-The connection, login, and chat executables start an in-process server on an
-available local TCP port. Login rejection currently covers empty credentials
-and duplicate usernames; the server's current temporary login implementation
-does not validate passwords against an account store.
+1. DCAP packet header encoding/decoding and malformed/truncated packets.
+2. TCP stream parsing when a packet arrives split across reads or multiple
+   packets arrive in one read.
+3. Authentication, duplicate usernames, session lifecycle, and ACK behavior.
+4. UDP registration tokens, heartbeat expiry, and discovery.
+5. Broadcast and private-message routing.
+6. File offer/decision/cancel authorization and transfer expiry.
+7. UDP file chunk ordering, retransmission/window behavior, and SHA-256
+   integrity verification.
 
-Manual end-to-end file-transfer scenarios:
-
-1. Log in two clients with registered UDP ports, offer a file, and accept it.
-2. Verify the received bytes, size, and checksum match the source file.
-3. Drop a UDP data packet and verify the sender retransmits it.
-4. Repeat with a rejected offer, an unknown transfer ID, and an interrupted
-   connection.
-
-The current file-transfer receiver is not implemented, so complete file
-delivery, retransmission, and receiver checksum scenarios cannot pass yet. The
-automated file-transfer test instead covers UDP packet encoding/decoding,
-corruption and truncation checks, repeated packet decoding, and rejection of a
-zero transfer ID by the server.
+Build and tests have intentionally not been run yet. Add the DCAP test suite
+before treating the integration as verified.
