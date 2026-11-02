@@ -154,6 +154,9 @@ void TcpSession::handle(const Packet& p) {
     sendError(p,ERR_UNKNOWN_MESSAGE_TYPE,"Unsupported TCP message type");
 }
 void TcpSession::run() {
+    // Drop stalled/inactive peers and prevent a blocked send from hanging a worker forever.
+    setSocketTimeout(socket_,120000,10000);
+    setSocketKeepAlive(socket_);
     Packet first;
     if(!receiveTcpPacketSecure(socket_,first,server_.encryptionKey()) || !authenticate(first)) {
         if(session_) server_.removeSession(session_);
