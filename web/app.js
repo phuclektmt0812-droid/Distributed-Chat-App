@@ -404,12 +404,33 @@ function handleEvent(event) {
                 "error"
             );
             break;
+        case "FILE_OFFER": {
+            const transferId = data && (data.transfer_id || data.transferId);
+            if (!transferId) break;
+            const filename = typeof data.filename === "string" ? data.filename : "a file";
+            const size = Number(data.size || 0);
+            const sizeLabel = size > 0 ? ` (${(size / 1024 / 1024).toFixed(2)} MB)` : "";
+            const accepted = window.confirm(`Incoming file offer: ${filename}${sizeLabel}. Accept this file?`);
+            void requestJson("/file_decision", {
+                method: "POST",
+                body: JSON.stringify({ transfer_id: transferId, accept: accepted })
+            }).then(() => {
+                showNotice(accepted ? `Accepted ${filename}; receiving over UDP.` : `Rejected ${filename}.`, "info");
+            }).catch(error => showNotice(error.message || "Could not respond to file offer.", "error"));
+            break;
+        }
         case "FILE_PROGRESS":
             updateTransferProgress(data || {});
             break;
         case "FILE_COMPLETE":
             markTransferComplete(data || {});
             break;
+        case "FILE_RESULT": {
+            const transfer = findOrCreateTransfer(data || {});
+            transfer.status = data && data.detail ? data.detail : "Transfer failed or cancelled";
+            renderTransfers();
+            break;
+        }
         default:
             break;
     }

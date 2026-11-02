@@ -7,6 +7,13 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 find_package(Threads REQUIRED)
 find_package(OpenSSL REQUIRED COMPONENTS Crypto)
+find_package(nlohmann_json CONFIG QUIET)
+if(NOT TARGET nlohmann_json::nlohmann_json)
+    find_path(NLOHMANN_JSON_INCLUDE_DIR nlohmann/json.hpp REQUIRED)
+    add_library(nlohmann_json INTERFACE)
+    target_include_directories(nlohmann_json INTERFACE "${NLOHMANN_JSON_INCLUDE_DIR}")
+    add_library(nlohmann_json::nlohmann_json ALIAS nlohmann_json)
+endif()
 
 add_library(chat_protocol STATIC
     protocol/packet.cpp
@@ -18,7 +25,6 @@ add_library(chat_protocol STATIC
 )
 target_include_directories(chat_protocol PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(chat_protocol PUBLIC OpenSSL::Crypto Threads::Threads)
-
 if(WIN32)
     target_link_libraries(chat_protocol PUBLIC ws2_32)
 endif()
@@ -33,15 +39,21 @@ add_executable(server_app
 )
 target_link_libraries(server_app PRIVATE chat_protocol)
 
-# The old dev client and HTTP bridge still speak length-prefixed JSON.
-# They are intentionally excluded until they are ported to DCAP v1.
 add_library(client_file_transfer STATIC
     clients/file_sender.cpp
     clients/file_receiver.cpp
 )
-target_link_libraries(client_file_transfer PUBLIC chat_protocol)
 target_include_directories(client_file_transfer PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
+target_link_libraries(client_file_transfer PUBLIC chat_protocol)
+
+add_executable(client_agent
+    clients/client_agent_main.cpp
+    clients/dcap_client.cpp
+    clients/dcap_http_bridge.cpp
+)
+target_include_directories(client_agent PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+target_link_libraries(client_agent PRIVATE client_file_transfer chat_protocol nlohmann_json::nlohmann_json)
 
 enable_testing()
-# The retained tests target the retired JSON protocol. Add DCAP tests before
-# registering CTest targets for the integrated protocol and server.
+# The retained tests target the retired JSON protocol. DCAP-specific tests
+# are still required and will be registered when that suite is added.
