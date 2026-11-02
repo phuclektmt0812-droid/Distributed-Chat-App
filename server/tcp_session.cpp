@@ -4,7 +4,7 @@
 #include "../protocol/packet.h"
 #include <chrono>
 #include <iostream>
-#include <random>
+#include <openssl/rand.h>
 
 using namespace protocol;
 static std::uint64_t nowMs() {
@@ -12,9 +12,8 @@ static std::uint64_t nowMs() {
         std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::system_clock::now().time_since_epoch()).count());
 }
-static void fillRandom(std::uint8_t* p,std::size_t n) {
-    std::random_device rd;
-    for(std::size_t i=0;i<n;++i) p[i]=static_cast<std::uint8_t>(rd());
+static bool fillRandom(std::uint8_t* p,std::size_t n) {
+    return RAND_bytes(p,static_cast<int>(n))==1;
 }
 TcpSession::TcpSession(Server& s,SocketHandle fd):server_(s),socket_(fd){}
 void TcpSession::sendAuthFail(std::uint16_t code,const std::string& reason) {
@@ -37,8 +36,12 @@ bool TcpSession::authenticate(Packet& first) {
     session_->username=request.username;
     session_->socket=socket_;
     session_->authenticated=true;
-    fillRandom(session_->sessionId.data(),session_->sessionId.size());
-    fillRandom(session_->udpToken.data(),session_->udpToken.size());
+    if(!fillRandom(session_->sessionId.data(),session_->sessionId.size()) ||
+       !fillRandom(session_->udpToken.data(),session_->udpToken.size())) {
+        session_.reset();
+        sendAuthFail(ERR_INVALID_SESSION,"Secure random generation failed");
+        return false;
+    }
     if(!server_.users().add(session_)) {
         // A rejected duplicate login must not remove the existing session.
         session_.reset();
