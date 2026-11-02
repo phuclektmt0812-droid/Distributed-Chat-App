@@ -11,7 +11,9 @@ using EncryptionKey = std::array<std::uint8_t, 32>;
 // nonce[12] | AES-256-GCM(ciphertext)[N] | tag[16], header authenticated as AAD.
 // All involved endpoints, INCLUDING the UDP relay Server, must use the same
 // secure decoder so it can validate transfer IDs and session permissions.
-EncryptionKey readKeyFromEnvironment(const char* name = "DCAP_KEY_HEX");
+EncryptionKey readKeyFromFile(const std::string& path);
+EncryptionKey loadOrCreateKeyFile(const std::string& path);
+std::string keyFilePathFromEnvironment(const char* name = "DCAP_KEY_FILE");
 std::string generateKeyHex();
 bool encodeSecurePacket(const Packet& plain, const EncryptionKey& key, Bytes& wire);
 bool decodeSecurePacket(const std::uint8_t* wire, std::size_t size,
