@@ -29,5 +29,7 @@ void shutdownSocket(SocketHandle s);
 int lastSocketError();
 bool isInterruptedError(int errorCode);
 bool setReuseAddress(SocketHandle s);
+bool setSocketTimeout(SocketHandle s, int receiveTimeoutMs, int sendTimeoutMs);
+bool setSocketKeepAlive(SocketHandle s);
 bool sendAll(SocketHandle s, const std::uint8_t* data, std::size_t length);
 bool receiveExact(SocketHandle s, std::uint8_t* data, std::size_t length);
