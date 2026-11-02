@@ -85,6 +85,15 @@ bool DcapClient::connect() {
         return false;
     }
 
+    // Keep dead peers detectable and prevent a blocked TCP send from stalling the UI.
+    if (!setSocketTimeout(tcp, 0, 10000) || !setSocketKeepAlive(tcp)) {
+        closeSocket(tcp);
+        std::lock_guard<std::mutex> lock(state_mutex_);
+        last_error_ = "Could not configure TCP socket resilience options";
+        if (socket_runtime_initialized_.exchange(false)) cleanupSocketRuntime();
+        return false;
+    }
+
     SocketHandle udp = ::socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
     if (udp == INVALID_SOCKET_HANDLE) {
         closeSocket(tcp);
@@ -250,7 +259,11 @@ void DcapClient::tcpLoop() {
     if (running_.exchange(false)) {
         connected_ = false;
         authenticated_ = false;
-        emit("DISCONNECTED");
+        {
+            std::lock_guard<std::mutex> lock(state_mutex_);
+            last_error_ = "TCP connection closed by the server or network";
+        }
+        emit("DISCONNECTED", {{"reason", "TCP connection closed by the server or network"}});
     }
 }
 
