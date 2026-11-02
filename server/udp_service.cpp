@@ -52,7 +52,7 @@ void UdpService::handle(const std::uint8_t* data,std::size_t len,const sockaddr_
         response.users=server_.users().usernames();
         Packet reply; reply.type=Type::DISCOVERY_REPLY;
         if(messages::encode(response,reply.payload))
-            sendUdpPacket(server_.udpSocket(),reply,src);
+            server_.sendUdpTo(reply,src);
         return;
     }
 
