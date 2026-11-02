@@ -135,7 +135,7 @@ bool DcapClient::login(const std::string& name) {
 
 bool DcapClient::sendTcp(protocol::Packet packet) {
     if (!connected_ || tcp_socket_ == INVALID_SOCKET_HANDLE) return false;
-    packet.sequence = tcp_sequence_.next();
+    if (packet.sequence == 0) packet.sequence = tcp_sequence_.next();
     std::lock_guard<std::mutex> lock(tcp_send_mutex_);
     return protocol::sendTcpPacket(tcp_socket_, packet);
 }
@@ -170,14 +170,18 @@ std::string DcapClient::sendFile(const std::string& recipient, const std::filesy
         auto sender = std::make_unique<filetransfer::FileSender>(path.string(), recipient, udp_sequence_);
         const auto id = fileproto::idHex(sender->offer().id);
         auto offer = sender->makeOffer(0);
+        offer.sequence = tcp_sequence_.next();
+        const auto offerSequence = offer.sequence;
         {
             std::lock_guard<std::mutex> lock(transfers_mutex_);
             if (senders_.count(id)) return {};
             senders_.emplace(id, std::move(sender));
+            pending_file_offers_[offerSequence] = id;
         }
         if (!sendTcp(std::move(offer))) {
             std::lock_guard<std::mutex> lock(transfers_mutex_);
             senders_.erase(id);
+            pending_file_offers_.erase(offerSequence);
             return {};
         }
         emit("FILE_PROGRESS", {{"transferId", id}, {"filename", path.filename().string()},
@@ -373,12 +377,23 @@ void DcapClient::handleTcp(const protocol::Packet& packet) {
         std::lock_guard<std::mutex> lock(transfers_mutex_);
         auto it = senders_.find(id);
         if (it != senders_.end()) it->second->handleDecision(packet);
+        for (auto pending = pending_file_offers_.begin(); pending != pending_file_offers_.end();) {
+            if (pending->second == id) pending = pending_file_offers_.erase(pending);
+            else ++pending;
+        }
         break;
     }
     case protocol::Type::FILE_RESULT: {
         fileproto::Result result;
         if (!fileproto::decode(packet.payload, result)) break;
         const auto id = fileproto::idHex(result.id);
+        if (result.status != 1) {
+            std::lock_guard<std::mutex> lock(transfers_mutex_);
+            auto sender = senders_.find(id);
+            if (sender != senders_.end()) { sender->second->failFromServer(result.detail); senders_.erase(sender); }
+            auto receiver = receivers_.find(id);
+            if (receiver != receivers_.end()) { receiver->second->cancel(); receivers_.erase(receiver); }
+        }
         emit(result.status == 1 ? "FILE_COMPLETE" : "FILE_RESULT",
             {{"transferId", id}, {"transfer_id", id}, {"status", result.status},
              {"progress", result.status == 1 ? 100 : 0}, {"detail", result.detail}});
@@ -386,8 +401,18 @@ void DcapClient::handleTcp(const protocol::Packet& packet) {
     }
     case protocol::Type::ERROR: {
         messages::Error error;
-        if (messages::decode(packet.payload, error))
+        if (messages::decode(packet.payload, error)) {
+            {
+                std::lock_guard<std::mutex> lock(transfers_mutex_);
+                auto pending = pending_file_offers_.find(error.related_sequence);
+                if (pending != pending_file_offers_.end()) {
+                    auto sender = senders_.find(pending->second);
+                    if (sender != senders_.end()) sender->second->failFromServer(error.detail);
+                    pending_file_offers_.erase(pending);
+                }
+            }
             emit("ERROR", {{"error", error.detail}, {"code", error.code}});
+        }
         break;
     }
     case protocol::Type::SERVER_NOTICE: {
@@ -505,7 +530,7 @@ void DcapClient::disconnect() {
     { std::lock_guard<std::mutex> lock(state_mutex_); username_.clear(); users_.clear(); }
     {
         std::lock_guard<std::mutex> lock(transfers_mutex_);
-        senders_.clear(); receivers_.clear(); incoming_offers_.clear();
+        senders_.clear(); receivers_.clear(); incoming_offers_.clear(); pending_file_offers_.clear();
     }
     if (wasRunning) emit("DISCONNECTED");
     if (socket_runtime_initialized_.exchange(false)) cleanupSocketRuntime();

@@ -7,6 +7,7 @@
 #include <climits>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <sstream>
 #include <stdexcept>
 #include <stdexcept>

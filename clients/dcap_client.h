@@ -92,6 +92,7 @@ private:
 
     std::mutex transfers_mutex_;
     std::unordered_map<std::string,std::unique_ptr<filetransfer::FileSender>> senders_;
+    std::unordered_map<std::uint32_t,std::string> pending_file_offers_;
     std::unordered_map<std::string,fileproto::Offer> incoming_offers_;
     std::unordered_map<std::string,std::unique_ptr<filetransfer::FileReceiver>> receivers_;
 };

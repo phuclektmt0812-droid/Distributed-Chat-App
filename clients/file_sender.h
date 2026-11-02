@@ -26,6 +26,7 @@ public:
     void onPacket(const protocol::Packet& udp_packet);
     std::vector<protocol::Packet> poll(TimePoint now);
     void cancel();
+    void failFromServer(const std::string& reason) { fail(reason); }
 
     SenderState state() const { return state_; }
     std::uint64_t acknowledgedBytes() const { return acknowledged_bytes_; }
