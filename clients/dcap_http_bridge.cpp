@@ -204,11 +204,27 @@ void DcapHttpBridge::handleConnection(SocketHandle socket) {
         if(expected && request.size()>=expected) { request.resize(expected); break; }
     }
     int status=400; json response={{"error","Malformed or incomplete HTTP request"}};
+    std::string responseType="application/json";
+    std::string rawResponse;
+    bool sendRaw=false;
     if(expected && request.size()==expected) {
         const std::string body=request.substr(headerEnd+4);
         const auto query=target.find('?');
         const std::string path=target.substr(0,query);
         if(method=="OPTIONS") { status=204; response=json::object(); }
+        else if(method=="GET" && (path=="/" || path=="/index.html" || path=="/app.js" || path=="/style.css")) {
+            const std::string filename = path=="/" ? "index.html" : path.substr(1);
+            auto filePath = std::filesystem::current_path() / "web" / filename;
+            if(!std::filesystem::exists(filePath)) filePath = std::filesystem::current_path().parent_path() / "web" / filename;
+            std::ifstream input(filePath,std::ios::binary);
+            if(!input) { status=404; response={{"error","Web asset not found; run client_agent from the repository root"}}; }
+            else {
+                rawResponse.assign(std::istreambuf_iterator<char>(input),std::istreambuf_iterator<char>());
+                responseType = filename=="index.html" ? "text/html; charset=utf-8" :
+                               filename=="app.js" ? "application/javascript; charset=utf-8" : "text/css; charset=utf-8";
+                status=200; sendRaw=true;
+            }
+        }
         else if(method=="POST" && path=="/login") {
             json data;
             if(!parseJson(body,data) || !data.contains("username") || !data["username"].is_string()) {
@@ -300,7 +316,7 @@ void DcapHttpBridge::handleConnection(SocketHandle socket) {
             }
         } else { status=404; response={{"error","Endpoint not found"}}; }
     }
-    respond(socket,status,"application/json",status==204?std::string():jsonBody(response),origin);
+    respond(socket,status,responseType,sendRaw?rawResponse:(status==204?std::string():jsonBody(response)),origin);
     shutdownSocket(socket); closeSocket(socket);
 }
 void DcapHttpBridge::stop() {

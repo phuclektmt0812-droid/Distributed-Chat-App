@@ -59,7 +59,7 @@ Start the client agent in another terminal:
 ./build/client_agent 127.0.0.1 54000 8080
 ```
 
-Open `web/index.html` in a browser and use the bridge address `http://127.0.0.1:8080`. For LAN clients, pass the server computer's LAN IPv4 address to `client_agent`.
+Open `http://127.0.0.1:8080` in a browser; the Client Agent serves the web UI and its API from the same local HTTP listener. For LAN clients, pass the server computer's LAN IPv4 address to `client_agent`.
 
 ## File transfer
 
