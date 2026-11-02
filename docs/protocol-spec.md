@@ -416,9 +416,11 @@ The integrated implementation applies AES-256-GCM to every TCP packet and UDP da
 - The complete header is authenticated as GCM additional authenticated data (AAD); header tampering causes authentication failure.
 - The wire payload is `nonce[12] | ciphertext[N] | tag[16]`.
 - OpenSSL `RAND_bytes()` generates a fresh 96-bit nonce for every encrypted packet.
-- The 32-byte pre-shared key is loaded from `DCAP_KEY_HEX`, exactly 64 hexadecimal characters. The Server and all Client Agents must use the same value.
+- On first startup, the Server generates a 32-byte key with OpenSSL `RAND_bytes()` and stores it in `dcap.key` (or the path configured by `DCAP_KEY_FILE`).
+- The key file is created with owner-only permissions (`0600`) on POSIX systems. The Server reuses the existing file on later starts; Client Agents read that same file and never generate independent keys.
+- If a Client Agent runs on another computer, the Server-generated key file must be securely provisioned there. This is shared-key provisioning for a course demo, not automatic key exchange.
 - The Server authenticates/decrypts inbound UDP packets before session and transfer authorization, then encrypts the forwarded packet for its destination.
-- Missing or malformed keys stop Server startup or Client connection. There is no plaintext fallback.
+- Missing or malformed key files stop Server startup or Client connection. There is no plaintext fallback.
 
 The 14-byte DCAP header and message type registry remain unchanged, but the payload wire representation changes. Plaintext DCAP peers are incompatible with this profile.
 
