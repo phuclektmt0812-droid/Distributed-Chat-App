@@ -1,514 +1,309 @@
-#include "dcap_client.h"
-
+#include "dcap_http_bridge.h"
 #include "../protocol/packet.h"
-#include "../protocol/protocol.h"
+#include <nlohmann/json.hpp>
 #include <algorithm>
+#include <cctype>
 #include <chrono>
-#include <ctime>
-#include <cstring>
-#include <iostream>
+#include <climits>
+#include <filesystem>
+#include <fstream>
+#include <sstream>
 #include <stdexcept>
+#include <string>
 
 #ifdef _WIN32
 #include <ws2tcpip.h>
 #else
-#include <netdb.h>
 #include <sys/time.h>
 #endif
 
 using nlohmann::json;
-
 namespace {
-std::uint64_t nowMs() {
-    return static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
-        std::chrono::system_clock::now().time_since_epoch()).count());
-}
-std::string idFromPayload(const protocol::Bytes& payload) {
-    if (payload.size() < 16) return {};
-    fileproto::TransferId id{};
-    std::copy_n(payload.begin(), 16, id.begin());
-    return fileproto::idHex(id);
-}
-}
-
-DcapClient::DcapClient(std::string address, std::uint16_t tcpPort, std::uint16_t udpPort)
-    : server_address_(std::move(address)), server_port_(tcpPort), udp_port_(udpPort) {}
-
-DcapClient::~DcapClient() { disconnect(); }
-
-bool DcapClient::connect() {
-    if (connected_) return true;
-    if (server_address_.empty() || server_port_ == 0 || !initializeSocketRuntime()) {
-        std::lock_guard<std::mutex> lock(state_mutex_);
-        last_error_ = "Invalid server address or socket initialization failed";
-        return false;
-    }
-
-    socket_runtime_initialized_ = true;
-    addrinfo hints{};
-    hints.ai_family = AF_INET;
-    hints.ai_socktype = SOCK_STREAM;
-    hints.ai_protocol = IPPROTO_TCP;
-    addrinfo* addresses = nullptr;
-    const std::string port = std::to_string(server_port_);
-    if (getaddrinfo(server_address_.c_str(), port.c_str(), &hints, &addresses) != 0 ||
-        !addresses) {
-        std::lock_guard<std::mutex> lock(state_mutex_);
-        last_error_ = "Could not resolve chat server address";
-        if (socket_runtime_initialized_.exchange(false)) cleanupSocketRuntime();
-        return false;
-    }
-
-    SocketHandle tcp = INVALID_SOCKET_HANDLE;
-    sockaddr_in udpDestination{};
-    for (auto* current = addresses; current; current = current->ai_next) {
-        tcp = ::socket(current->ai_family, current->ai_socktype, current->ai_protocol);
-        if (tcp != INVALID_SOCKET_HANDLE &&
-            ::connect(tcp, current->ai_addr, static_cast<SocketLength>(current->ai_addrlen)) == 0) {
-            std::memcpy(&udpDestination, current->ai_addr, sizeof(sockaddr_in));
-            break;
-        }
-        if (tcp != INVALID_SOCKET_HANDLE) closeSocket(tcp);
-        tcp = INVALID_SOCKET_HANDLE;
-    }
-    freeaddrinfo(addresses);
-    if (tcp == INVALID_SOCKET_HANDLE) {
-        std::lock_guard<std::mutex> lock(state_mutex_);
-        last_error_ = "Could not connect to TCP server";
-        if (socket_runtime_initialized_.exchange(false)) cleanupSocketRuntime();
-        return false;
-    }
-
-    SocketHandle udp = ::socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-    if (udp == INVALID_SOCKET_HANDLE) {
-        closeSocket(tcp);
-        std::lock_guard<std::mutex> lock(state_mutex_);
-        last_error_ = "Could not create UDP socket";
-        if (socket_runtime_initialized_.exchange(false)) cleanupSocketRuntime();
-        return false;
-    }
-    sockaddr_in local{};
-    local.sin_family = AF_INET;
-    local.sin_addr.s_addr = htonl(INADDR_ANY);
-    local.sin_port = 0;
-    if (::bind(udp, reinterpret_cast<sockaddr*>(&local), sizeof(local)) != 0) {
-        closeSocket(tcp); closeSocket(udp);
-        std::lock_guard<std::mutex> lock(state_mutex_);
-        last_error_ = "Could not bind UDP socket";
-        if (socket_runtime_initialized_.exchange(false)) cleanupSocketRuntime();
-        return false;
-    }
-    udpDestination.sin_port = htons(udp_port_);
+std::uint64_t nowMs() { return static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count()); }
+constexpr std::size_t MAX_HEADER = 16384;
+constexpr std::size_t MAX_BODY = 110ULL * 1024ULL * 1024ULL;
+bool sendBytes(SocketHandle s, const char* data, std::size_t size) {
+    std::size_t offset = 0;
+    while (offset < size) {
+        const int amount = static_cast<int>(std::min<std::size_t>(size-offset, INT_MAX));
 #ifdef _WIN32
-    DWORD timeoutMs = 1000;
-    setsockopt(udp, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&timeoutMs), sizeof(timeoutMs));
+        const int n = send(s, data+offset, amount, 0);
 #else
-    timeval timeout{1,0};
-    setsockopt(udp, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+        const int n = static_cast<int>(send(s, data+offset, static_cast<std::size_t>(amount), MSG_NOSIGNAL));
 #endif
-
-    tcp_socket_ = tcp;
-    udp_socket_ = udp;
-    server_udp_ = udpDestination;
-    connected_ = true;
-    running_ = true;
-    try {
-        tcp_thread_ = std::thread(&DcapClient::tcpLoop, this);
-        udp_thread_ = std::thread(&DcapClient::udpLoop, this);
-        maintenance_thread_ = std::thread(&DcapClient::maintenanceLoop, this);
-    } catch (...) {
-        disconnect();
-        std::lock_guard<std::mutex> lock(state_mutex_);
-        last_error_ = "Could not start client network threads";
-        return false;
+        if (n <= 0) return false;
+        offset += static_cast<std::size_t>(n);
     }
     return true;
 }
-
-bool DcapClient::login(const std::string& name) {
-    if (!connected_ || name.empty() || name.size() > protocol::MAX_USERNAME_BYTES ||
-        !protocol::validUtf8(name)) return false;
-    protocol::Packet packet;
-    packet.type = protocol::Type::AUTH;
-    if (!messages::encode(messages::Auth{name}, packet.payload)) return false;
-    {
-        std::lock_guard<std::mutex> lock(state_mutex_);
-        username_ = name;
-    }
-    return sendTcp(std::move(packet));
+std::string lower(std::string s) {
+    std::transform(s.begin(),s.end(),s.begin(),[](unsigned char c){return static_cast<char>(std::tolower(c));});
+    return s;
 }
-
-bool DcapClient::sendTcp(protocol::Packet packet) {
-    if (!connected_ || tcp_socket_ == INVALID_SOCKET_HANDLE) return false;
-    packet.sequence = tcp_sequence_.next();
-    std::lock_guard<std::mutex> lock(tcp_send_mutex_);
-    return protocol::sendTcpPacket(tcp_socket_, packet);
-}
-
-bool DcapClient::sendUdp(protocol::Packet packet) {
-    if (!connected_ || udp_socket_ == INVALID_SOCKET_HANDLE) return false;
-    packet.sequence = udp_sequence_.next();
-    std::lock_guard<std::mutex> lock(udp_send_mutex_);
-    return protocol::sendUdpPacket(udp_socket_, packet, server_udp_);
-}
-
-bool DcapClient::sendGlobal(const std::string& text) {
-    if (!authenticated_ || text.empty() || text.size() > protocol::MAX_CHAT_BYTES) return false;
-    protocol::Packet packet;
-    packet.type = protocol::Type::MSG;
-    if (!messages::encode(messages::ChatRequest{tcp_sequence_.next(), text}, packet.payload)) return false;
-    return sendTcp(std::move(packet));
-}
-
-bool DcapClient::sendPrivate(const std::string& recipient, const std::string& text) {
-    if (!authenticated_ || recipient.empty() || text.empty() ||
-        text.size() > protocol::MAX_CHAT_BYTES) return false;
-    protocol::Packet packet;
-    packet.type = protocol::Type::PRIVATE_MSG;
-    if (!messages::encode(messages::PrivateRequest{tcp_sequence_.next(), recipient, text}, packet.payload)) return false;
-    return sendTcp(std::move(packet));
-}
-
-std::string DcapClient::sendFile(const std::string& recipient, const std::filesystem::path& path) {
-    if (!authenticated_ || recipient.empty()) return {};
-    try {
-        auto sender = std::make_unique<filetransfer::FileSender>(path.string(), recipient, udp_sequence_);
-        const auto id = fileproto::idHex(sender->offer().id);
-        auto offer = sender->makeOffer(0);
-        {
-            std::lock_guard<std::mutex> lock(transfers_mutex_);
-            if (senders_.count(id)) return {};
-            senders_.emplace(id, std::move(sender));
-        }
-        if (!sendTcp(std::move(offer))) {
-            std::lock_guard<std::mutex> lock(transfers_mutex_);
-            senders_.erase(id);
-            return {};
-        }
-        emit("FILE_PROGRESS", {{"transferId", id}, {"filename", path.filename().string()},
-                               {"progress", 0}, {"status", "Waiting for recipient"}});
-        return id;
-    } catch (const std::exception& error) {
-        std::lock_guard<std::mutex> lock(state_mutex_);
-        last_error_ = error.what();
-        return {};
+std::string statusText(int s) {
+    switch(s) {
+        case 200:return "OK"; case 202:return "Accepted"; case 204:return "No Content";
+        case 400:return "Bad Request"; case 401:return "Unauthorized"; case 404:return "Not Found";
+        case 405:return "Method Not Allowed"; case 409:return "Conflict"; case 413:return "Payload Too Large";
+        case 415:return "Unsupported Media Type"; case 422:return "Unprocessable Entity";
+        case 500:return "Internal Server Error"; case 503:return "Service Unavailable";
+        case 504:return "Gateway Timeout"; default:return "Error";
     }
 }
-
-bool DcapClient::decideFile(const std::string& id, bool accept) {
-    fileproto::Offer offer;
-    {
-        std::lock_guard<std::mutex> lock(transfers_mutex_);
-        auto found = incoming_offers_.find(id);
-        if (found == incoming_offers_.end()) return false;
-        offer = found->second;
-        if (accept) {
-            try {
-                auto receiver = std::make_unique<filetransfer::FileReceiver>(
-                    offer, std::filesystem::current_path() / "received_files", udp_sequence_);
-                receivers_[id] = std::move(receiver);
-            } catch (const std::exception& error) {
-                emit("ERROR", {{"error", error.what()}});
-                return false;
+std::string jsonBody(const json& value) { return value.dump(); }
+bool parseJson(const std::string& body, json& out) {
+    try { out=json::parse(body); return out.is_object(); } catch(...) { return false; }
+}
+std::string safeFilename(std::string name) {
+    const auto pos=name.find_last_of("/\\");
+    if(pos!=std::string::npos) name=name.substr(pos+1);
+    if(name.empty() || name=="." || name=="..") return "upload.bin";
+    for(char& c:name) if(static_cast<unsigned char>(c)<32 || c==':' || c=='/' || c=='\\') c='_';
+    if(name.size()>255) name.resize(255);
+    return name;
+}
+bool parseMultipart(const std::string& body,const std::string& contentType,
+                    std::string& recipient,std::string& filename,std::string& bytes) {
+    const auto b=contentType.find("boundary=");
+    if(b==std::string::npos) return false;
+    std::string boundary=contentType.substr(b+9);
+    if(!boundary.empty() && boundary.front()=='"') {
+        const auto end=boundary.find('"',1); if(end==std::string::npos) return false;
+        boundary=boundary.substr(1,end-1);
+    } else {
+        const auto semi=boundary.find(';'); if(semi!=std::string::npos) boundary.resize(semi);
+    }
+    if(boundary.empty() || boundary.size()>200) return false;
+    const std::string marker="--"+boundary;
+    std::size_t cursor=0;
+    while((cursor=body.find(marker,cursor))!=std::string::npos) {
+        cursor+=marker.size();
+        if(body.compare(cursor,2,"--")==0) break;
+        if(body.compare(cursor,2,"\r\n")!=0) return false;
+        cursor+=2;
+        const auto headerEnd=body.find("\r\n\r\n",cursor);
+        if(headerEnd==std::string::npos) return false;
+        const std::string headers=body.substr(cursor,headerEnd-cursor);
+        const auto dataStart=headerEnd+4;
+        const auto dataEnd=body.find("\r\n"+marker,dataStart);
+        if(dataEnd==std::string::npos) return false;
+        std::string field;
+        const auto disposition=lower(headers).find("content-disposition:");
+        if(disposition!=std::string::npos) {
+            const auto lineEnd=headers.find("\r\n",disposition);
+            const auto line=headers.substr(disposition,lineEnd==std::string::npos?std::string::npos:lineEnd-disposition);
+            const auto n=line.find("name=\"");
+            if(n!=std::string::npos) {
+                const auto e=line.find('"',n+6);
+                if(e!=std::string::npos) field=line.substr(n+6,e-(n+6));
+            }
+            const auto f=line.find("filename=\"");
+            if(f!=std::string::npos) {
+                const auto e=line.find('"',f+10);
+                if(e!=std::string::npos) filename=safeFilename(line.substr(f+10,e-(f+10)));
             }
         }
+        const std::string value=body.substr(dataStart,dataEnd-dataStart);
+        if(field=="recipient") recipient=value;
+        if(!filename.empty() && field=="file") bytes=value;
+        cursor=dataEnd+2;
     }
-    fileproto::Decision decision;
-    decision.id = offer.id;
-    decision.accepted = accept;
-    decision.reason = accept ? "" : "Rejected by recipient";
-    protocol::Packet packet;
-    packet.type = protocol::Type::FILE_DECISION;
-    if (!fileproto::encode(decision, packet.payload) || !sendTcp(std::move(packet))) {
-        std::lock_guard<std::mutex> lock(transfers_mutex_);
-        receivers_.erase(id);
-        return false;
+    return !recipient.empty() && !filename.empty();
+}
+}
+
+DcapHttpBridge::DcapHttpBridge(const std::string& address,std::uint16_t serverPort,std::uint16_t httpPort)
+    : client_(address,serverPort),http_port_(httpPort) {}
+DcapHttpBridge::~DcapHttpBridge(){ stop(); }
+
+bool DcapHttpBridge::start() {
+    if(running_) return true;
+    if(!initializeSocketRuntime()) return false;
+    listener_=::socket(AF_INET,SOCK_STREAM,IPPROTO_TCP);
+    if(listener_==INVALID_SOCKET_HANDLE) return false;
+    setReuseAddress(listener_);
+    sockaddr_in local{}; local.sin_family=AF_INET;
+    local.sin_addr.s_addr=htonl(INADDR_LOOPBACK); local.sin_port=htons(http_port_);
+    if(::bind(listener_,reinterpret_cast<sockaddr*>(&local),sizeof(local))!=0 ||
+       ::listen(listener_,SOMAXCONN)!=0) {
+        closeSocket(listener_); listener_=INVALID_SOCKET_HANDLE; return false;
     }
-    {
-        std::lock_guard<std::mutex> lock(transfers_mutex_);
-        incoming_offers_.erase(id);
-    }
+    running_=true;
+    accept_thread_=std::thread(&DcapHttpBridge::acceptLoop,this);
     return true;
 }
-
-void DcapClient::tcpLoop() {
-    while (running_) {
-        protocol::Packet packet;
-        if (!protocol::receiveTcpPacket(tcp_socket_, packet)) break;
-        handleTcp(packet);
-    }
-    if (running_.exchange(false)) {
-        connected_ = false;
-        authenticated_ = false;
-        emit("DISCONNECTED");
+void DcapHttpBridge::acceptLoop() {
+    while(running_) {
+        SocketHandle s=::accept(listener_,nullptr,nullptr);
+        if(s==INVALID_SOCKET_HANDLE) { if(!running_) break; continue; }
+        std::lock_guard<std::mutex> lock(workers_mutex_);
+        workers_.emplace_back(&DcapHttpBridge::handleConnection,this,s);
     }
 }
-
-void DcapClient::udpLoop() {
-    std::uint8_t buffer[protocol::MAX_UDP_DATAGRAM + 1];
-    while (running_) {
-        sockaddr_in source{};
-        SocketLength length = sizeof(source);
+void DcapHttpBridge::respond(SocketHandle s,int status,const std::string& type,
+                             const std::string& body,const std::string& origin) {
+    std::ostringstream out;
+    out<<"HTTP/1.1 "<<status<<" "<<statusText(status)<<"\r\n"
+       <<"Content-Type: "<<type<<"\r\nContent-Length: "<<body.size()
+       <<"\r\nConnection: close\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\n";
+    if(origin=="http://localhost" || origin=="http://127.0.0.1" ||
+       origin.rfind("http://localhost:",0)==0 || origin.rfind("http://127.0.0.1:",0)==0) {
+        out<<"Access-Control-Allow-Origin: "<<origin<<"\r\n"
+           <<"Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n"
+           <<"Access-Control-Allow-Headers: Content-Type\r\nVary: Origin\r\n";
+    }
+    out<<"\r\n";
+    const auto header=out.str();
+    sendBytes(s,header.data(),header.size());
+    if(!body.empty()) sendBytes(s,body.data(),body.size());
+}
+void DcapHttpBridge::handleConnection(SocketHandle socket) {
+    std::string request;
+    std::vector<char> buffer(8192);
+    std::size_t expected=0, headerEnd=std::string::npos, contentLength=0;
+    std::string method,target,contentType,origin;
+    while(request.size()<=MAX_HEADER+MAX_BODY) {
 #ifdef _WIN32
-        const int received = recvfrom(udp_socket_, reinterpret_cast<char*>(buffer),
-            static_cast<int>(sizeof(buffer)), 0, reinterpret_cast<sockaddr*>(&source), &length);
+        const int n=recv(socket,buffer.data(),static_cast<int>(buffer.size()),0);
 #else
-        const auto received = recvfrom(udp_socket_, buffer, sizeof(buffer), 0,
-            reinterpret_cast<sockaddr*>(&source), &length);
+        const auto n=recv(socket,buffer.data(),buffer.size(),0);
 #endif
-        if (received <= 0) {
-            if (!running_) break;
-            continue;
-        }
-        protocol::Packet packet;
-        if (protocol::decodeDatagram(buffer, static_cast<std::size_t>(received), packet))
-            handleUdp(packet);
-    }
-}
-
-void DcapClient::maintenanceLoop() {
-    auto heartbeatAt = std::chrono::steady_clock::now();
-    while (running_) {
-        const auto now = std::chrono::steady_clock::now();
-        if (authenticated_ && udp_registered_ && now >= heartbeatAt) {
-            messages::Heartbeat heartbeat{nowMs(), nowMs()};
-            protocol::Packet packet;
-            packet.type = protocol::Type::HEARTBEAT;
-            if (messages::encode(heartbeat, packet.payload)) sendUdp(std::move(packet));
-            heartbeatAt = now + std::chrono::milliseconds(protocol::HEARTBEAT_INTERVAL_MS);
-        }
-
-        {
-            std::lock_guard<std::mutex> lock(transfers_mutex_);
-            for (auto it = senders_.begin(); it != senders_.end();) {
-                auto& sender = *it->second;
-                for (auto& packet : sender.poll(now)) sendUdp(std::move(packet));
-                const auto total = sender.totalBytes();
-                const auto done = sender.acknowledgedBytes();
-                const double progress = total ? (100.0 * done / total) :
-                    (sender.state() == filetransfer::SenderState::COMPLETED ? 100.0 : 0.0);
-                emit("FILE_PROGRESS", {{"transferId", it->first},
-                    {"filename", sender.offer().filename}, {"progress", progress},
-                    {"status", sender.state() == filetransfer::SenderState::WAIT_DECISION
-                        ? "Waiting for recipient" : "Transferring"}});
-                if (sender.state() == filetransfer::SenderState::COMPLETED) {
-                    emit("FILE_COMPLETE", {{"transferId", it->first},
-                        {"filename", sender.offer().filename}, {"progress", 100}});
-                    it = senders_.erase(it);
-                } else if (sender.state() == filetransfer::SenderState::FAILED) {
-                    emit("ERROR", {{"error", sender.lastError()}, {"transferId", it->first}});
-                    it = senders_.erase(it);
-                } else ++it;
+        if(n<=0) break;
+        request.append(buffer.data(),static_cast<std::size_t>(n));
+        if(headerEnd==std::string::npos) {
+            headerEnd=request.find("\r\n\r\n");
+            if(headerEnd==std::string::npos) {
+                if(request.size()>MAX_HEADER) break;
+                continue;
             }
+            std::istringstream headers(request.substr(0,headerEnd));
+            std::string line; headers>>method>>target;
+            std::getline(headers,line);
+            while(std::getline(headers,line)) {
+                if(!line.empty() && line.back()=='\r') line.pop_back();
+                const auto colon=line.find(':'); if(colon==std::string::npos) continue;
+                const auto name=lower(line.substr(0,colon));
+                auto value=line.substr(colon+1);
+                while(!value.empty() && std::isspace(static_cast<unsigned char>(value.front()))) value.erase(value.begin());
+                if(name=="content-length") {
+                    try { contentLength=std::stoull(value); } catch(...) { contentLength=MAX_BODY+1; }
+                } else if(name=="content-type") contentType=value;
+                else if(name=="origin") origin=value;
+            }
+            if(contentLength>MAX_BODY) break;
+            expected=headerEnd+4+contentLength;
         }
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        if(expected && request.size()>=expected) { request.resize(expected); break; }
     }
+    int status=400; json response={{"error","Malformed or incomplete HTTP request"}};
+    if(expected && request.size()==expected) {
+        const std::string body=request.substr(headerEnd+4);
+        const auto query=target.find('?');
+        const std::string path=target.substr(0,query);
+        if(method=="OPTIONS") { status=204; response=json::object(); }
+        else if(method=="POST" && path=="/login") {
+            json data;
+            if(!parseJson(body,data) || !data.contains("username") || !data["username"].is_string()) {
+                status=400; response={{"error","Username is required"}};
+            } else {
+                std::lock_guard<std::mutex> lock(session_mutex_);
+                if(client_.authenticated()) { status=409; response={{"error","Already logged in"}}; }
+                else if(!client_.connect()) { status=503; response={{"error",client_.lastError()}}; }
+                else if(!client_.login(data["username"].get<std::string>())) { status=400; response={{"error","Invalid username or login request"}}; }
+                else {
+                    const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(8);
+                    bool done=false;
+                    while(std::chrono::steady_clock::now()<deadline && !done) {
+                        for(auto& event:client_.takeEvents()) {
+                            if(event.type=="LOGIN_OK") { done=true; break; }
+                            if(event.type=="LOGIN_FAIL") {
+                                status=401; response={{"error",event.data.value("error",std::string("Login rejected"))}};
+                                done=true; break;
+                            }
+                            std::lock_guard<std::mutex> q(events_mutex_);
+                            pending_events_.push_back(std::move(event));
+                        }
+                        if(!done) std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                    }
+                    if(status==400 && !done) { status=504; response={{"error","Timed out waiting for authentication"}}; }
+                    else if(status==400) { status=200; response={{"authenticated",true},{"username",client_.username()}}; }
+                }
+            }
+        } else if(method=="POST" && path=="/logout") {
+            std::lock_guard<std::mutex> lock(session_mutex_); client_.logout();
+            status=200; response={{"authenticated",false}};
+        } else if(method=="POST" && (path=="/global_message" || path=="/private_message")) {
+            json data;
+            if(!parseJson(body,data)) { status=400; response={{"error","Invalid JSON body"}}; }
+            else if(!client_.authenticated()) { status=401; response={{"error","Authentication required"}}; }
+            else {
+                const auto content=data.value("content",std::string());
+                bool sent=false;
+                if(path=="/global_message") sent=client_.sendGlobal(content);
+                else sent=client_.sendPrivate(data.value("recipient",std::string()),content);
+                status=sent?202:422; response=sent?json{{"status","accepted"}}:json{{"error","Invalid message or recipient"}};
+            }
+        } else if(method=="GET" && path=="/user_list") {
+            if(!client_.authenticated()) { status=401; response={{"error","Authentication required"}}; }
+            else { status=200; response={{"users",client_.users()}}; }
+        } else if(method=="GET" && path=="/events") {
+            if(!client_.authenticated()) { status=401; response={{"error","Authentication required"}}; }
+            else {
+                json events=json::array();
+                {
+                    std::lock_guard<std::mutex> lock(events_mutex_);
+                    for(auto& e:pending_events_) events.push_back({{"type",e.type},{"data",e.data}});
+                    pending_events_.clear();
+                }
+                for(auto& e:client_.takeEvents()) events.push_back({{"type",e.type},{"data",e.data}});
+                status=200; response={{"events",events}};
+            }
+        } else if(method=="GET" && path=="/status") {
+            status=200; response={{"connected",client_.connected()},{"authenticated",client_.authenticated()},
+                {"username",client_.username()},{"server_port",54000},{"last_connection_error",client_.lastError()}};
+        } else if(method=="POST" && path=="/file_decision") {
+            json data;
+            if(!parseJson(body,data) || !data.contains("transfer_id") || !data.contains("accept")) {
+                status=400; response={{"error","transfer_id and accept are required"}};
+            } else {
+                const bool ok=client_.decideFile(data["transfer_id"].get<std::string>(),data["accept"].get<bool>());
+                status=ok?202:404; response=ok?json{{"status","accepted"}}:json{{"error","Unknown transfer offer"}};
+            }
+        } else if(method=="POST" && path=="/file_upload") {
+            if(!client_.authenticated()) { status=401; response={{"error","Authentication required"}}; }
+            else {
+                std::string recipient,filename,fileBytes;
+                if(!parseMultipart(body,contentType,recipient,filename,fileBytes)) {
+                    status=400; response={{"error","Expected multipart fields recipient and file"}};
+                } else {
+                    try {
+                        const auto directory=std::filesystem::current_path()/"uploads";
+                        std::filesystem::create_directories(directory);
+                        const auto path=directory/(std::to_string(nowMs())+"-"+filename);
+                        std::ofstream out(path,std::ios::binary);
+                        out.write(fileBytes.data(),static_cast<std::streamsize>(fileBytes.size()));
+                        out.close();
+                        if(!out) throw std::runtime_error("Could not save uploaded file");
+                        const auto id=client_.sendFile(recipient,path);
+                        if(id.empty()) { status=422; response={{"error",client_.lastError().empty()?"Could not start file transfer":client_.lastError()}}; }
+                        else { status=202; response={{"transfer_id",id},{"status","offered"}}; }
+                    } catch(const std::exception& e) { status=500; response={{"error",e.what()}}; }
+                }
+            }
+        } else { status=404; response={{"error","Endpoint not found"}}; }
+    }
+    respond(socket,status,"application/json",status==204?std::string():jsonBody(response),origin);
+    shutdownSocket(socket); closeSocket(socket);
 }
-
-void DcapClient::handleTcp(const protocol::Packet& packet) {
-    switch (packet.type) {
-    case protocol::Type::AUTH_OK: {
-        messages::AuthOk data;
-        if (!messages::decode(packet.payload, data)) break;
-        authenticated_ = true;
-        emit("LOGIN_OK", {{"username", data.username}});
-        break;
-    }
-    case protocol::Type::AUTH_FAIL: {
-        messages::AuthFail data;
-        if (!messages::decode(packet.payload, data)) break;
-        emit("LOGIN_FAIL", {{"error", data.reason}, {"code", data.code}});
-        break;
-    }
-    case protocol::Type::SESSION_INFO: {
-        messages::SessionInfo info;
-        if (!messages::decode(packet.payload, info)) break;
-        {
-            std::lock_guard<std::mutex> lock(state_mutex_);
-            udp_token_ = info.token;
-        }
-        messages::UdpRegister registration{info.token};
-        protocol::Packet request;
-        request.type = protocol::Type::UDP_REGISTER;
-        if (messages::encode(registration, request.payload)) sendUdp(std::move(request));
-        break;
-    }
-    case protocol::Type::USER_LIST: {
-        messages::UserList data;
-        if (!messages::decode(packet.payload, data)) break;
-        {
-            std::lock_guard<std::mutex> lock(state_mutex_);
-            users_ = data.users;
-        }
-        emit("USER_LIST", {{"users", data.users}, {"revision", data.revision}});
-        break;
-    }
-    case protocol::Type::MSG: {
-        messages::ChatEvent data;
-        if (!messages::decode(packet.payload, data)) break;
-        emit("CHAT_ALL", {{"sender", data.sender}, {"content", data.text},
-            {"timestamp", timestamp(data.server_time_ms)}, {"server_id", data.server_id}});
-        break;
-    }
-    case protocol::Type::PRIVATE_MSG: {
-        messages::PrivateEvent data;
-        if (!messages::decode(packet.payload, data)) break;
-        emit("CHAT_PRIVATE", {{"sender", data.sender}, {"recipient", data.recipient},
-            {"content", data.text}, {"private", true},
-            {"timestamp", timestamp(data.server_time_ms)}, {"server_id", data.server_id}});
-        break;
-    }
-    case protocol::Type::FILE_OFFER: {
-        fileproto::Offer offer;
-        if (!fileproto::decode(packet.payload, offer)) break;
-        const auto id = fileproto::idHex(offer.id);
-        {
-            std::lock_guard<std::mutex> lock(transfers_mutex_);
-            incoming_offers_[id] = offer;
-        }
-        emit("FILE_OFFER", {{"transfer_id", id}, {"transferId", id},
-            {"sender", ""}, {"filename", offer.filename}, {"size", offer.size},
-            {"recipient", offer.recipient}});
-        break;
-    }
-    case protocol::Type::FILE_DECISION: {
-        const auto id = idFromPayload(packet.payload);
-        std::lock_guard<std::mutex> lock(transfers_mutex_);
-        auto it = senders_.find(id);
-        if (it != senders_.end()) it->second->handleDecision(packet);
-        break;
-    }
-    case protocol::Type::FILE_RESULT: {
-        fileproto::Result result;
-        if (!fileproto::decode(packet.payload, result)) break;
-        const auto id = fileproto::idHex(result.id);
-        emit(result.status == 1 ? "FILE_COMPLETE" : "FILE_RESULT",
-            {{"transferId", id}, {"transfer_id", id}, {"status", result.status},
-             {"progress", result.status == 1 ? 100 : 0}, {"detail", result.detail}});
-        break;
-    }
-    case protocol::Type::ERROR: {
-        messages::Error error;
-        if (messages::decode(packet.payload, error))
-            emit("ERROR", {{"error", error.detail}, {"code", error.code}});
-        break;
-    }
-    case protocol::Type::SERVER_NOTICE: {
-        messages::ServerNotice notice;
-        if (messages::decode(packet.payload, notice))
-            emit("SERVER_NOTICE", {{"message", notice.message}, {"severity", notice.severity}});
-        break;
-    }
-    case protocol::Type::PING: {
-        protocol::Packet pong;
-        pong.type = protocol::Type::PONG;
-        pong.payload = packet.payload;
-        sendTcp(std::move(pong));
-        break;
-    }
-    default: break;
-    }
-}
-
-void DcapClient::handleUdp(const protocol::Packet& packet) {
-    if (packet.type == protocol::Type::UDP_REGISTER_OK) {
-        messages::UdpRegisterOk result;
-        if (messages::decode(packet.payload, result)) {
-            udp_registered_ = result.registered;
-            if (!result.registered) emit("ERROR", {{"error", "UDP registration rejected"}});
-        }
-        return;
-    }
-    if (packet.type == protocol::Type::HEARTBEAT_ACK) return;
-    const auto id = idFromPayload(packet.payload);
-    if (id.empty()) return;
-    std::lock_guard<std::mutex> lock(transfers_mutex_);
-    auto sender = senders_.find(id);
-    if (sender != senders_.end()) {
-        sender->second->onPacket(packet);
-        return;
-    }
-    auto receiver = receivers_.find(id);
-    if (receiver != receivers_.end()) {
-        for (auto& reply : receiver->second->onPacket(packet)) sendUdp(std::move(reply));
-        if (receiver->second->state() == filetransfer::ReceiverState::COMPLETED) {
-            emit("FILE_COMPLETE", {{"transferId", id},
-                {"filename", receiver->second->completedPath().filename().string()},
-                {"progress", 100}, {"status", "Received"}});
-            receivers_.erase(receiver);
-        } else if (receiver->second->state() == filetransfer::ReceiverState::FAILED) {
-            emit("ERROR", {{"error", receiver->second->lastError()}, {"transferId", id}});
-            receivers_.erase(receiver);
-        }
-    }
-}
-
-void DcapClient::emit(std::string type, json data) {
-    std::lock_guard<std::mutex> lock(events_mutex_);
-    events_.push_back({std::move(type), std::move(data)});
-    while (events_.size() > 1000) events_.pop_front();
-}
-
-std::vector<AgentEvent> DcapClient::takeEvents() {
-    std::vector<AgentEvent> out;
-    std::lock_guard<std::mutex> lock(events_mutex_);
-    while (!events_.empty()) {
-        out.push_back(std::move(events_.front()));
-        events_.pop_front();
-    }
-    return out;
-}
-
-std::string DcapClient::username() const {
-    std::lock_guard<std::mutex> lock(state_mutex_);
-    return username_;
-}
-std::vector<std::string> DcapClient::users() const {
-    std::lock_guard<std::mutex> lock(state_mutex_);
-    return users_;
-}
-std::string DcapClient::lastError() const {
-    std::lock_guard<std::mutex> lock(state_mutex_);
-    return last_error_;
-}
-std::string DcapClient::timestamp(std::uint64_t ms) {
-    const std::time_t seconds = static_cast<std::time_t>(ms / 1000);
-    std::tm tm{};
-#ifdef _WIN32
-    gmtime_s(&tm, &seconds);
-#else
-    gmtime_r(&seconds, &tm);
-#endif
-    char buffer[32]{};
-    std::strftime(buffer, sizeof(buffer), "%Y-%m-%dT%H:%M:%SZ", &tm);
-    return buffer;
-}
-
-void DcapClient::logout() {
-    if (authenticated_) {
-        protocol::Packet packet;
-        packet.type = protocol::Type::LOGOUT;
-        sendTcp(std::move(packet));
-    }
-    disconnect();
-}
-
-void DcapClient::disconnect() {
-    const bool wasRunning = running_.exchange(false);
-    authenticated_ = false;
-    connected_ = false;
-    if (tcp_socket_ != INVALID_SOCKET_HANDLE) shutdownSocket(tcp_socket_);
-    if (udp_socket_ != INVALID_SOCKET_HANDLE) shutdownSocket(udp_socket_);
-    if (tcp_thread_.joinable() && tcp_thread_.get_id() != std::this_thread::get_id()) tcp_thread_.join();
-    if (udp_thread_.joinable() && udp_thread_.get_id() != std::this_thread::get_id()) udp_thread_.join();
-    if (maintenance_thread_.joinable() && maintenance_thread_.get_id() != std::this_thread::get_id()) maintenance_thread_.join();
-    if (tcp_socket_ != INVALID_SOCKET_HANDLE) { closeSocket(tcp_socket_); tcp_socket_ = INVALID_SOCKET_HANDLE; }
-    if (udp_socket_ != INVALID_SOCKET_HANDLE) { closeSocket(udp_socket_); udp_socket_ = INVALID_SOCKET_HANDLE; }
-    udp_registered_ = false;
+void DcapHttpBridge::stop() {
+    if(!running_.exchange(false)) return;
+    if(listener_!=INVALID_SOCKET_HANDLE) { shutdownSocket(listener_); closeSocket(listener_); listener_=INVALID_SOCKET_HANDLE; }
+    if(accept_thread_.joinable()) accept_thread_.join();
     {
-        std::lock_guard<std::mutex> lock(transfers_mutex_);
-        senders_.clear(); receivers_.clear(); incoming_offers_.clear();
+        std::lock_guard<std::mutex> lock(workers_mutex_);
+        for(auto& worker:workers_) if(worker.joinable()) worker.join();
+        workers_.clear();
     }
-    if (wasRunning) emit("DISCONNECTED");
-    if (socket_runtime_initialized_.exchange(false)) cleanupSocketRuntime();
+    client_.disconnect();
+    cleanupSocketRuntime();
 }

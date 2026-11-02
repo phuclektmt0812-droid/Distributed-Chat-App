@@ -20,6 +20,7 @@ private:
     void respond(SocketHandle socket, int status, const std::string& contentType,
                  const std::string& body, const std::string& origin = "");
     DcapClient client_;
+    std::uint16_t server_port_;
     std::uint16_t http_port_;
     SocketHandle listener_ = INVALID_SOCKET_HANDLE;
     std::atomic<bool> running_{false};
