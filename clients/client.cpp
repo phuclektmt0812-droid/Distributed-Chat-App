@@ -8,6 +8,7 @@
 #include <cstring>
 #include <iostream>
 #include <stdexcept>
+#include <thread>
 
 #ifdef _WIN32
 #include <ws2tcpip.h>
@@ -435,8 +436,22 @@ void DcapClient::handleTcp(const protocol::Packet& packet) {
             std::lock_guard<std::mutex> lock(transfers_mutex_);
             incoming_offers_[id] = offer;
         }
-        // Receive files automatically; the recipient no longer needs to
-        // approve each incoming transfer in the UI.
+        // Wait only for transport readiness, never for manual user approval.
+        const auto udpReadyDeadline = std::chrono::steady_clock::now() +
+                                      std::chrono::seconds(5);
+        while (running_ && !udp_registered_ &&
+               std::chrono::steady_clock::now() < udpReadyDeadline) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+        if (!running_) break;
+        if (!udp_registered_) {
+            (void)decideFile(id, false);
+            emit("ERROR", {{"error", "Could not receive file because UDP is not ready"},
+                           {"transferId", id}, {"filename", offer.filename}});
+            break;
+        }
+
+        // Accept the offer automatically once this client can receive UDP data.
         if (!decideFile(id, true)) {
             emit("ERROR", {{"error", "Could not automatically accept incoming file"},
                            {"transferId", id}, {"filename", offer.filename}});
