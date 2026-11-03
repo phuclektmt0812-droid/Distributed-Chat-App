@@ -42,6 +42,31 @@ This shared-key setup does not provide per-user keys, password authentication, a
 - On Windows, GNU Make plus a GCC-compatible toolchain (MSYS2/MinGW-w64 or MinGW-w64 GCC), OpenSSL, and the Windows socket library.
 - On macOS, Xcode Command Line Tools (or another Clang/GCC toolchain) and OpenSSL (for example, installed with Homebrew).
 
+### Install the JSON dependency
+
+The client and HTTP bridge use the header-only `nlohmann/json` library. Install its development headers for the same compiler/toolchain used to build this project:
+
+**Windows (MSYS2 UCRT64):** open the MSYS2 UCRT64 terminal and run:
+
+```sh
+pacman -S --needed mingw-w64-ucrt-x86_64-nlohmann-json
+```
+
+The package installs `nlohmann/json.hpp` under the UCRT64 include directory. Use the UCRT64 compiler (`C:/msys64/ucrt64/bin/g++.exe`) to build the project. <https://packages.msys2.org/packages/mingw-w64-ucrt-x86_64-nlohmann-json>
+
+**Ubuntu/Debian:**
+
+```sh
+sudo apt update
+sudo apt install nlohmann-json3-dev
+```
+
+**macOS (Homebrew):**
+
+```sh
+brew install nlohmann-json
+```
+
 CMake 3.20+ is optional; GNU Make can build the application and test programs without CMake.
 
 ## Build with Make
