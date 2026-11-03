@@ -28,26 +28,36 @@ bool TcpSession::authenticate(Packet& first) {
     }
     messages::Auth request;
     if(!messages::decode(first.payload,request)) {
-        sendAuthFail(ERR_INVALID_USERNAME,"Invalid username");
+        sendAuthFail(ERR_MALFORMED_PACKET,"Invalid username or password payload");
         return false;
     }
 
     session_=std::make_shared<ClientSession>();
     session_->username=request.username;
     session_->socket=socket_;
-    session_->authenticated=true;
     if(!fillRandom(session_->sessionId.data(),session_->sessionId.size()) ||
        !fillRandom(session_->udpToken.data(),session_->udpToken.size())) {
         session_.reset();
         sendAuthFail(ERR_INVALID_SESSION,"Secure random generation failed");
         return false;
     }
-    if(!server_.users().add(session_)) {
-        // A rejected duplicate login must not remove the existing session.
+
+    const auto loginStatus=server_.users().login(session_,request.password);
+    if(loginStatus!=AccountLoginStatus::SUCCESS) {
+        std::uint16_t code=ERR_ACCOUNT_NOT_FOUND;
+        std::string reason="Account does not exist. Sign up first.";
+        if(loginStatus==AccountLoginStatus::INVALID_PASSWORD) {
+            code=ERR_INVALID_PASSWORD;
+            reason="Incorrect password.";
+        } else if(loginStatus==AccountLoginStatus::ALREADY_ONLINE) {
+            code=ERR_ACCOUNT_ALREADY_ONLINE;
+            reason="This account is already logged in on another device.";
+        }
         session_.reset();
-        sendAuthFail(ERR_USERNAME_IN_USE,"Username already online");
+        sendAuthFail(code,reason);
         return false;
     }
+    session_->authenticated=true;
 
     messages::AuthOk authOk;
     authOk.username=session_->username;
@@ -166,7 +176,46 @@ void TcpSession::run() {
     setSocketTimeout(socket_,10000,10000);
     setSocketKeepAlive(socket_);
     Packet first;
-    if(!receiveTcpPacketSecure(socket_,first,server_.encryptionKey()) || !authenticate(first)) {
+    if (!receiveTcpPacketSecure(socket_,first,server_.encryptionKey())) {
+        shutdownSocket(socket_); closeSocket(socket_); return;
+    }
+    if (first.type==Type::SIGN_UP) {
+        messages::SignUp request;
+        std::uint16_t code=0;
+        std::string reason="Account created.";
+        Type responseType=Type::SIGN_UP_OK;
+        if (!messages::decode(first.payload,request)) {
+            code=ERR_INVALID_USERNAME;
+            reason="Invalid username or password payload.";
+            responseType=Type::SIGN_UP_FAIL;
+        } else {
+            const auto result=server_.users().signUp(request.username,request.password);
+            if (result!=SignUpStatus::SUCCESS) {
+                responseType=Type::SIGN_UP_FAIL;
+                switch(result) {
+                case SignUpStatus::ACCOUNT_EXISTS:
+                    code=ERR_ACCOUNT_EXISTS; reason="Username is already registered."; break;
+                case SignUpStatus::INVALID_USERNAME:
+                    code=ERR_INVALID_USERNAME; reason="Invalid username."; break;
+                case SignUpStatus::WEAK_PASSWORD:
+                    code=ERR_WEAK_PASSWORD; reason="Password must contain 8 to 128 UTF-8 bytes."; break;
+                case SignUpStatus::STORAGE_ERROR:
+                    code=ERR_ACCOUNT_STORE_ERROR; reason="Account storage is unavailable."; break;
+                case SignUpStatus::SUCCESS:
+                    break;
+                }
+            }
+        }
+        messages::AuthFail result{code,reason};
+        Packet response;
+        response.type=responseType;
+        if (messages::encode(result,response.payload))
+            sendTcpPacketSecure(socket_,response,server_.encryptionKey());
+        shutdownSocket(socket_);
+        closeSocket(socket_);
+        return;
+    }
+    if(!authenticate(first)) {
         if(session_) server_.removeSession(session_);
         shutdownSocket(socket_); closeSocket(socket_); return;
     }
