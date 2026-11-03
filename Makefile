@@ -17,7 +17,7 @@ ifeq ($(OS),Windows_NT)
   RUN_TESTS = powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/run-tests.ps1 -TestDirectory "$(TEST_BUILD_DIR)" -Tests "$(TESTS)"
   RUN_ONE = powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/run-one-test.ps1 -Executable "$(TEST_BUILD_DIR)/$*$(EXEEXT)"
   CLEAN_BUILD = if exist "$(BUILD_DIR)" rmdir /S /Q "$(BUILD_DIR)"
-  CLEAN_APPS = if exist "server_app$(EXEEXT)" del /Q "server_app$(EXEEXT)" & if exist "client_agent$(EXEEXT)" del /Q "client_agent$(EXEEXT)"
+  CLEAN_APPS = if exist "server_app$(EXEEXT)" del /Q "server_app$(EXEEXT)" & if exist "client_agent$(EXEEXT)" del /Q "client_agent$(EXEEXT)" & if exist "live_web_gateway$(EXEEXT)" del /Q "live_web_gateway$(EXEEXT)"
 else
   EXEEXT ?=
   SHELL := /bin/sh
@@ -26,7 +26,7 @@ else
   RUN_TESTS = set -e; for name in $(TESTS); do echo ""; echo "========== $$name =========="; "./$(TEST_BUILD_DIR)/$$name$(EXEEXT)"; done; echo ""; echo "All $(words $(TESTS)) test programs passed."
   RUN_ONE = "./$<"
   CLEAN_BUILD = rm -rf "$(BUILD_DIR)"
-  CLEAN_APPS = rm -f server_app$(EXEEXT) client_agent$(EXEEXT)
+  CLEAN_APPS = rm -f server_app$(EXEEXT) client_agent$(EXEEXT) live_web_gateway$(EXEEXT)
 endif
 
 BUILD_DIR ?= make-build
@@ -78,16 +78,20 @@ TESTS = dcap_protocol_tests \
 
 all: app tests
 
-app: server clients
+app: server clients live-web-gateway
 
 server: server_app$(EXEEXT)
 clients: client_agent$(EXEEXT)
+live-web-gateway: live_web_gateway$(EXEEXT)
 
 server_app$(EXEEXT): $(CORE) $(SERVER)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(CORE) $(SERVER) $(LDLIBS) $(THREADS) -o $@
 
 client_agent$(EXEEXT): $(CORE) $(CLIENT)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(CORE) $(CLIENT) $(LDLIBS) $(THREADS) -o $@
+
+live_web_gateway$(EXEEXT): $(CORE) gateway/live_web_gateway_main.cpp gateway/live_web_gateway.cpp clients/client.cpp $(FILE_TRANSFER)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(CORE) gateway/live_web_gateway_main.cpp gateway/live_web_gateway.cpp clients/client.cpp $(FILE_TRANSFER) $(LDLIBS) $(THREADS) -o $@
 
 define TEST_template
 $(TEST_BUILD_DIR)/$(1)$(EXEEXT): $(2) $(3)
