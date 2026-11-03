@@ -31,9 +31,10 @@ using nlohmann::json;
 
 namespace {
 constexpr std::size_t MAX_HEADER_BYTES = 16 * 1024;
-constexpr std::size_t MAX_HTTP_BODY_BYTES = 110ULL * 1024ULL * 1024ULL;
+constexpr std::size_t MAX_HTTP_BODY_BYTES = 17ULL * 1024ULL * 1024ULL;
+constexpr std::uint64_t MAX_GATEWAY_FILE_SIZE = 16ULL * 1024ULL * 1024ULL;
 constexpr std::size_t MAX_ACTIVE_SESSIONS = 64;
-constexpr std::size_t MAX_ACTIVE_HTTP_WORKERS = 128;
+constexpr std::size_t MAX_ACTIVE_HTTP_WORKERS = 16;
 constexpr std::uint64_t SESSION_IDLE_TIMEOUT_MS = 12ULL * 60ULL * 60ULL * 1000ULL;
 
 struct HttpRequest {
@@ -803,9 +804,9 @@ void LiveWebGateway::handleConnection(SocketHandle socket) {
                                             recipient, filename, fileBytes)) {
                             status = 400;
                             response = {{"error", "Expected multipart fields recipient and file"}};
-                        } else if (fileBytes.size() > protocol::MAX_FILE_SIZE) {
+                        } else if (fileBytes.size() > MAX_GATEWAY_FILE_SIZE) {
                             status = 413;
-                            response = {{"error", "File exceeds the 100 MiB protocol limit"}};
+                            response = {{"error", "Public gateway uploads are limited to 16 MiB per file"}};
                         } else {
                             try {
                                 const auto directory = std::filesystem::current_path() /
