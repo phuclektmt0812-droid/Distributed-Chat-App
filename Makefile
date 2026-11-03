@@ -14,23 +14,26 @@ ifeq ($(OS),Windows_NT)
   SHELL := cmd.exe
   .SHELLFLAGS := /C
   MKDIR_BUILD = if not exist "$(TEST_BUILD_DIR)" mkdir "$(TEST_BUILD_DIR)"
-  RUN_TESTS = powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/run-tests.ps1 -TestDirectory "$(TEST_BUILD_DIR)" -Tests "$(TESTS)"
-  RUN_ONE = powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/run-one-test.ps1 -Executable "$(TEST_BUILD_DIR)/$*$(EXEEXT)"
+  RUN_TESTS = powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/run-tests.ps1 -TestDirectory "$(TEST_BUILD_DIR)" -Tests "$(TESTS)" -LogFile "$(LOG_FILE)"
+  RUN_ONE = powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/run-one-test.ps1 -Executable "$(TEST_BUILD_DIR)/$*$(EXEEXT)" -LogFile "$(LOG_FILE)"
   CLEAN_BUILD = if exist "$(BUILD_DIR)" rmdir /S /Q "$(BUILD_DIR)"
   CLEAN_APPS = if exist "server_app$(EXEEXT)" del /Q "server_app$(EXEEXT)" & if exist "client_agent$(EXEEXT)" del /Q "client_agent$(EXEEXT)" & if exist "live_web_gateway$(EXEEXT)" del /Q "live_web_gateway$(EXEEXT)"
+  CLEAN_LOG = if exist "$(LOG_FILE)" del /Q "$(LOG_FILE)"
 else
   EXEEXT ?=
   SHELL := /bin/sh
   .SHELLFLAGS := -c
   MKDIR_BUILD = mkdir -p "$(TEST_BUILD_DIR)"
-  RUN_TESTS = set -e; for name in $(TESTS); do echo ""; echo "========== $$name =========="; "./$(TEST_BUILD_DIR)/$$name$(EXEEXT)"; done; echo ""; echo "All $(words $(TESTS)) test programs passed."
-  RUN_ONE = "./$<"
+  RUN_TESTS = sh scripts/run-tests.sh "$(TEST_BUILD_DIR)" "$(TESTS)" "$(LOG_FILE)"
+  RUN_ONE = sh scripts/run-one-test.sh "$<" "$(LOG_FILE)"
   CLEAN_BUILD = rm -rf "$(BUILD_DIR)"
   CLEAN_APPS = rm -f server_app$(EXEEXT) client_agent$(EXEEXT) live_web_gateway$(EXEEXT)
+  CLEAN_LOG = rm -f "$(LOG_FILE)"
 endif
 
 BUILD_DIR ?= make-build
 TEST_BUILD_DIR := $(BUILD_DIR)/tests
+LOG_FILE ?= test-results.log
 
 CORE = protocol/packet.cpp protocol/protocol.cpp protocol/file_messages.cpp \
        protocol/message_payloads.cpp protocol/secure_payload.cpp \
@@ -157,3 +160,4 @@ list-tests:
 clean:
 	@$(CLEAN_BUILD)
 	@$(CLEAN_APPS)
+	@$(CLEAN_LOG)
