@@ -54,7 +54,7 @@ std::vector<std::shared_ptr<ClientSession>> UserManager::expiredUdp(std::uint64_
     for(auto& p:users_) {
         auto s=p.second;
         if(s->udpRegistered && s->lastHeartbeatMs &&
-           now-s->lastHeartbeatMs>15000) {
+           now>=s->lastHeartbeatMs && now-s->lastHeartbeatMs>15000) {
             s->udpRegistered=false; out.push_back(s);
         }
     }
