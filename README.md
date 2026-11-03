@@ -149,12 +149,12 @@ The default target builds the Server, Client Agent, Public Web Gateway, and all 
 | `make clients` | Build Client Agent only |
 | `make live-web-gateway` | Build the public browser Gateway only |
 | `make tests` | Build all test executables without running them |
-| `make test` | Build and run all 23 tests sequentially |
+| `make test` | Build and run all 24 tests sequentially; overwrite `test-results.log` |
 | `make dcap_login_tests` | Build one test executable |
 | `make run-dcap_login_tests` | Build and run one test executable |
 | `make test-one TEST=dcap_login_tests` | Alternative command to run one test |
 | `make list-tests` | List available test target names |
-| `make clean` | Remove Make-generated binaries and the `make-build/` directory |
+| `make clean` | Remove Make-generated binaries, the `make-build/` directory, and `test-results.log` |
 
 Replace `dcap_login_tests` with any test target listed by `make list-tests`.
 
