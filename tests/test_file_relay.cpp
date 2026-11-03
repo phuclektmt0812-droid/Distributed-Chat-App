@@ -34,7 +34,9 @@ void testReceiverAutomaticallyAcceptsOffer() {
     const auto source = makeSource(root, "automatic.bin");
     {
         test::TestServer server;
-        DcapClient sender("127.0.0.1"), receiver("127.0.0.1");
+        DcapClient sender("127.0.0.1");
+        DcapClient receiver("127.0.0.1", protocol::TCP_PORT, protocol::UDP_PORT,
+                            root / "received");
         test::connectAndLogin(sender, "relay-sender-auto");
         test::connectAndLogin(receiver, "relay-receiver-auto");
         const auto id = sender.sendFile("relay-receiver-auto", source);
@@ -50,6 +52,8 @@ void testReceiverAutomaticallyAcceptsOffer() {
         test::require(senderDone.data.value("transferId", std::string()) == id &&
                       receiverDone.data.value("transferId", std::string()) == id,
                       "automatically accepted transfer did not complete on both clients");
+        test::require(fs::exists(root / "received" / "automatic.bin"),
+                      "automatically accepted file was not saved");
     }
     std::error_code ec; fs::remove_all(root, ec);
 }
