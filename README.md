@@ -34,23 +34,49 @@ This shared-key setup does not provide per-user keys, password authentication, a
 
 ## Build requirements
 
-- CMake 3.20+
-- C++17 compiler
+- GNU Make
+- C++17 compiler (GCC or a compatible compiler)
 - OpenSSL Crypto development package
 - Threads
-- nlohmann/json headers or CMake package
+- nlohmann/json headers
+- On Windows, a GNU-compatible environment such as MSYS2/MinGW-w64 with the Windows socket library
 
-## Build
+CMake 3.20+ is optional; GNU Make can build the application and test programs without CMake.
 
-```sh
+## Build with Make
+
+Run these commands from the repository root:
+
+\`\`\`sh
+make
+\`\`\`
+
+The default \`make\` target builds the server, client agent, and all 23 test executables.
+
+Useful targets:
+
+- \`make app\`: build only the server and client.
+- \`make server\`: build only \`server_app\`.
+- \`make clients\`: build only \`client_agent\`.
+- \`make tests\`: build all test executables without running them.
+- \`make test\`: build and run all 23 tests sequentially.
+- \`make dcap_login_tests\`: build one test executable (replace with any test name listed in \`tests/README.md\`).
+- \`make clean\`: remove Make-generated binaries and the \`make-build/\` directory.
+
+Build outputs are placed in \`make-build/tests/\`; the server and client executables are created in the repository root.
+
+## Build with CMake (optional)
+
+\`\`\`sh
 cmake -S . -B build
 cmake --build build
-```
+ctest --test-dir build --output-on-failure
+\`\`\`
 
 Targets:
-- `server_app`: DCAP server.
-- `client_agent`: DCAP client plus local HTTP bridge.
-- `client_file_transfer`: reusable file sender/receiver library.
+- \`server_app\`: DCAP server.
+- \`client_agent\`: DCAP client plus local HTTP bridge.
+- \`client_file_transfer\`: reusable file sender/receiver library.
 
 ## Run
 
