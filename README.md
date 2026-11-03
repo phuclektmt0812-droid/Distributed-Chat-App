@@ -1,138 +1,382 @@
-# Distributed-Chat-App
+# Distributed Chat App
 
-Distributed and streaming-based client-server collaboration application for the Network Application Development course.
+A C++17 client-server chat and collaboration application with a browser-based user interface. The system uses raw TCP and UDP sockets for server communication and a small local HTTP bridge between the browser and the native Client Agent.
 
-## Protocol and endpoints
+## Overview
 
-The integrated implementation uses the DCAP v1 wire contract in `docs/protocol-spec.md`:
+The application is made up of three parts:
 
-- TCP control, authentication, broadcast/private chat, and file negotiation: port `54000`.
-- UDP registration, heartbeat, discovery, and relayed file transfer: port `54001`.
-- Browser UI to local Client Agent: HTTP on loopback port `8080`.
+- **Server** — handles client sessions, username authentication, online-user state, chat routing, UDP registration/heartbeat, and relayed file transfers.
+- **Client Agent** — maintains the TCP and UDP connections to the Server, handles the DCAP protocol, and exposes a local HTTP interface to the browser.
+- **Browser UI** — provides login, online users, global/private chat, and file-transfer interactions.
 
-Authentication in protocol v1 is username-based. The protocol does not transmit or validate passwords; this is a course prototype, not password-based account security.
+The browser does not connect directly to the Server's TCP or UDP sockets. It communicates with the Client Agent over HTTP on the same computer.
 
-## Transport security
+## Features
 
-All DCAP TCP packets and UDP datagrams use AES-256-GCM authenticated encryption. The 14-byte DCAP header remains visible and is authenticated as GCM additional data; the payload is encrypted. The Server decrypts UDP relay traffic to authorize the transfer and re-encrypts it for the destination client.
+- Username-based login and online-session management.
+- Global messages and private messages.
+- Online-user list and client/server connection status.
+- UDP endpoint registration, heartbeat, and discovery.
+- File offers and accept/reject decisions over TCP.
+- File data relayed through the Server over UDP, with chunking, acknowledgements, retransmission, and SHA-256 integrity verification.
+- AES-256-GCM authenticated encryption for DCAP TCP and UDP packet payloads.
+- Cross-platform socket compatibility layer for Windows, Linux, and macOS.
 
-On first startup, the Server automatically generates a 256-bit key with OpenSSL and saves it to `dcap.key` in the working directory. Later Server restarts reuse that file. Each Client Agent reads the same file automatically; it does not generate a separate key. The file is excluded by `.gitignore` and must never be committed or exposed to the browser. On POSIX systems it is created with owner-only permissions (`0600`). If a Client runs on another machine, securely copy the Server’s `dcap.key` to that machine or set `DCAP_KEY_FILE` to its secure location. The optional `DCAP_KEY_FILE` environment variable overrides the default file path.
+## Architecture and network endpoints
 
-This shared-key setup does not provide per-user keys, password authentication, automatic key exchange/rotation, forward secrecy, or replay protection. It is a course-project security profile, not production-grade security.
-
-## Project structure
-
-- `server/`: TCP sessions, authentication/session management, UDP service, and file relay.
-- `protocol/`: DCAP packet framing, payload codecs, file-transfer messages, and secure-payload helpers.
-- `platform/`: Windows/POSIX socket compatibility.
-- `clients/client.*`: DCAP TCP/UDP client, session registration, chat, and file-transfer coordination.
-- `clients/http_bridge.*`: local HTTP bridge for the browser UI.
-- `clients/file_sender.*`, `clients/file_receiver.*`: UDP file-transfer state machines.
-- `clients/client_agent_main.cpp`: starts the local Client Agent.
-- `web/`: HTML/CSS/JS interface retained and connected to the DCAP HTTP bridge.
-- `tests/`: DCAP protocol, client/server integration, file-transfer, security, and HTTP/web tests.
-
-## Build requirements
-
-- GNU Make
-- C++17 compiler (GCC or a compatible compiler)
-- OpenSSL Crypto development package
-- Threads
-- nlohmann/json headers
-- On Windows, GNU Make plus a GCC-compatible toolchain (MSYS2/MinGW-w64 or MinGW-w64 GCC), OpenSSL, and the Windows socket library.
-- On macOS, Xcode Command Line Tools (or another Clang/GCC toolchain) and OpenSSL (for example, installed with Homebrew).
-
-### Install the JSON dependency
-
-The client and HTTP bridge use the header-only `nlohmann/json` library. Install its development headers for the same compiler/toolchain used to build this project:
-
-**Windows (MSYS2 UCRT64):** open the MSYS2 UCRT64 terminal and run:
-
-```sh
-pacman -S --needed mingw-w64-ucrt-x86_64-nlohmann-json
+```text
++-----------------------+
+|      Web Browser      |
+|  HTML / CSS / JavaScript
++-----------+-----------+
+            |
+            | HTTP/1.1, loopback only
+            | 127.0.0.1:8080
+            v
++-----------------------+
+|     Client Agent      |
+|  C++ TCP / UDP client |
+|  Local HTTP bridge    |
++-----------+-----------+
+            |
+            | TCP : 54000
+            | UDP : 54001
+            v
++-----------------------+
+|        Server         |
+| Sessions / chat / UDP |
+| File-transfer relay   |
++-----------------------+
 ```
 
-The package installs `nlohmann/json.hpp` under the UCRT64 include directory. Use the UCRT64 compiler (`C:/msys64/ucrt64/bin/g++.exe`) to build the project. <https://packages.msys2.org/packages/mingw-w64-ucrt-x86_64-nlohmann-json>
+| Endpoint | Default address | Purpose |
+|---|---|---|
+| Server TCP | `<server-ip>:54000` | Login, session control, global/private chat, file negotiation and results |
+| Server UDP | `<server-ip>:54001` | UDP registration, heartbeat, discovery, file chunks and acknowledgements |
+| Client Agent HTTP | `127.0.0.1:8080` | Browser UI and local Client Agent API |
 
-**Ubuntu/Debian:**
+The Server binds its TCP and UDP sockets to all local IPv4 interfaces. The Client Agent's HTTP bridge binds to loopback (`127.0.0.1`) and is not intended to be exposed to the LAN. The Server's TCP and UDP ports are fixed by the current protocol implementation; the Client Agent's HTTP port can be supplied as a command-line argument.
 
-```sh
+## Repository layout
+
+```text
+.
+├── clients/                 # Native Client Agent, HTTP bridge, file sender/receiver
+├── docs/
+│   ├── integration-guide.md # Architecture, module roles, integration notes
+│   ├── protocol-spec.md     # DCAP v1 packet and message specification
+│   └── file-transfer-spec.md# UDP file-transfer protocol and reliability
+├── platform/                # Windows/POSIX socket compatibility
+├── protocol/                # Packet codec, payloads, security, file messages
+├── scripts/                 # Test runner scripts (PowerShell on Windows)
+├── server/                  # TCP server, sessions, user manager, UDP relay
+├── tests/                   # Unit, protocol, security and integration tests
+│   └── Expected_Result/     # Expected success-summary output per test program
+├── web/                     # Browser UI (HTML, CSS, JavaScript)
+├── CMakeLists.txt
+├── Makefile
+└── README.md
+```
+
+## Requirements
+
+- C++17 compiler: GCC, Clang, or a compatible compiler.
+- GNU Make for the Makefile workflow. On macOS, Homebrew installs GNU Make as `gmake`.
+- OpenSSL development headers and Crypto library.
+- `nlohmann/json` headers.
+- Thread support.
+- CMake 3.20 or later only if using the optional CMake workflow.
+
+Install dependencies using the package manager for the same compiler/toolchain that will build the project.
+
+### Windows — MSYS2 UCRT64
+
+Install the UCRT64 compiler and libraries from an **MSYS2 UCRT64** terminal:
+
+```bash
+pacman -S --needed \
+  mingw-w64-ucrt-x86_64-gcc \
+  mingw-w64-ucrt-x86_64-openssl \
+  mingw-w64-ucrt-x86_64-nlohmann-json
+```
+
+Use the UCRT64 compiler (normally `C:\\msys64\\ucrt64\\bin\\g++.exe`). Make sure the `g++` found by PowerShell is from this same UCRT64 environment. The Makefile's Windows test runner uses PowerShell.
+
+### Linux — Ubuntu / Debian
+
+```bash
 sudo apt update
-sudo apt install nlohmann-json3-dev
+sudo apt install build-essential make libssl-dev nlohmann-json3-dev
 ```
 
-**macOS (Homebrew):**
+### macOS — Homebrew
 
-```sh
-brew install nlohmann-json
+```bash
+xcode-select --install
+brew install make openssl nlohmann-json pkg-config
 ```
 
-CMake 3.20+ is optional; GNU Make can build the application and test programs without CMake.
+Use `gmake` for the GNU Make commands below. If Homebrew's OpenSSL is not in the compiler's default search paths, expose its flags through `pkg-config` before building:
 
-## Build with Make
+```bash
+export PKG_CONFIG_PATH="$(brew --prefix openssl)/lib/pkgconfig"
+export CPPFLAGS="-I. $(pkg-config --cflags openssl)"
+export LDLIBS="$(pkg-config --libs openssl)"
+```
 
-Run these commands from the repository root:
+## Build
 
-\`\`\`sh
+Run build commands from the repository root.
+
+### GNU Make (recommended)
+
+On Windows and Linux:
+
+```bash
 make
-\`\`\`
+```
 
-The default \`make\` target builds the server, client agent, and all 23 test executables.
+On macOS, use `gmake` instead of `make`.
 
-Useful targets:
+The default target builds the Server, Client Agent, and all 23 test executables. It does **not** run the tests.
 
-- \`make app\`: build only the server and client.
-- \`make server\`: build only \`server_app\`.
-- \`make clients\`: build only \`client_agent\`.
-- \`make tests\`: build all test executables without running them.
-- \`make test\`: build and run all 23 tests sequentially.
-- \`make dcap_login_tests\`: build one test executable (replace with any test name listed in \`tests/README.md\`).
-- \`make run-dcap_login_tests\`: build and run one test executable.
-- \`make clean\`: remove Make-generated binaries and the \`make-build/\` directory.
+| Command | Action |
+|---|---|
+| `make` | Build Server, Client Agent, and all test executables |
+| `make app` | Build Server and Client Agent only |
+| `make server` | Build Server only |
+| `make clients` | Build Client Agent only |
+| `make tests` | Build all test executables without running them |
+| `make test` | Build and run all 23 tests sequentially |
+| `make dcap_login_tests` | Build one test executable |
+| `make run-dcap_login_tests` | Build and run one test executable |
+| `make test-one TEST=dcap_login_tests` | Alternative command to run one test |
+| `make list-tests` | List available test target names |
+| `make clean` | Remove Make-generated binaries and the `make-build/` directory |
 
-Build outputs are placed in \`make-build/tests/\`; the server and client executables are created in the repository root.
+Replace `dcap_login_tests` with any test target listed by `make list-tests`.
 
-## Build with CMake (optional)
+Build outputs:
 
-\`\`\`sh
+- `server_app` / `server_app.exe` and `client_agent` / `client_agent.exe` are created in the repository root.
+- Test executables are created under `make-build/tests/`.
+
+### CMake (optional)
+
+```bash
 cmake -S . -B build
-cmake --build build
-ctest --test-dir build --output-on-failure
-\`\`\`
-
-Targets:
-- \`server_app\`: DCAP server.
-- \`client_agent\`: DCAP client plus local HTTP bridge.
-- \`client_file_transfer\`: reusable file sender/receiver library.
-
-## Run
-
-Start the server:
-
-```sh
-./build/server_app
+cmake --build build --config Release
+ctest --test-dir build -C Release --output-on-failure
 ```
 
-Start the client agent in another terminal:
+CMake build output locations depend on the selected generator and configuration. On multi-configuration generators, executables may be placed under a configuration directory such as `build/Release/`.
 
-```sh
-./build/client_agent 127.0.0.1 54000 8080
+## Run the application
+
+Run both programs from the **repository root**. The Server creates or reads `dcap.key` relative to its working directory, and the Client Agent locates the browser assets under `web/`.
+
+### 1. Start the Server
+
+Open a terminal:
+
+**Windows PowerShell**
+
+```powershell
+.\\server_app.exe
 ```
 
-Open `http://127.0.0.1:8080` in a browser; the Client Agent serves the web UI and its API from the same local HTTP listener. For LAN clients, pass the server computer's LAN IPv4 address to `client_agent`.
+**Linux / macOS**
+
+```bash
+./server_app
+```
+
+The Server listens on TCP port `54000` and UDP port `54001`. On first startup it creates the shared encryption key file `dcap.key` if the file does not already exist.
+
+### 2. Start the Client Agent
+
+Open a second terminal in the repository root:
+
+**Windows PowerShell**
+
+```powershell
+.\\client_agent.exe 127.0.0.1 54000 8080
+```
+
+**Linux / macOS**
+
+```bash
+./client_agent 127.0.0.1 54000 8080
+```
+
+The arguments are:
+
+```text
+client_agent <server-ip> <server-tcp-port> <local-http-port>
+```
+
+All arguments are optional. Defaults are:
+
+- Server address: `127.0.0.1`
+- Server TCP port: `54000`
+- Local HTTP port: `8080`
+
+### 3. Open the browser UI
+
+Open:
+
+```text
+http://127.0.0.1:8080/
+```
+
+Enter a username to log in. Protocol v1 uses username-based authentication; it does not have password authentication.
+
+Press Enter in the Client Agent terminal to stop the Client Agent. Press Enter in the Server terminal to stop the Server.
+
+### Run on a LAN
+
+1. Start the Server on the host machine.
+2. Allow inbound TCP port `54000` and UDP port `54001` through the host firewall.
+3. Copy the Server's `dcap.key` securely to each Client machine. Do not send it through the chat application or commit it to the repository.
+4. Set `DCAP_KEY_FILE` for the Server and each Client Agent if the key is not in the process working directory.
+5. Start each Client Agent with the Server machine's LAN IPv4 address:
+
+```powershell
+.\\client_agent.exe 192.168.1.10 54000 8080
+```
+
+Replace `192.168.1.10` with the actual Server LAN address. Open the browser on the same machine as that Client Agent at `http://127.0.0.1:8080/`. If multiple Client Agents run on one computer, give each one a different local HTTP port (for example, `8080` and `8081`).
+
+The HTTP bridge remains local to each Client Agent machine. It is not the port that remote clients use to connect to the Server.
+
+## Shared encryption key
+
+- The Server generates a random 256-bit AES key and stores it in `dcap.key` on first startup.
+- The Server reuses the existing key on later starts.
+- Each Client Agent reads the same key file when it connects; it does not create its own key.
+- The optional environment variable `DCAP_KEY_FILE` overrides the default path.
+
+PowerShell example:
+
+```powershell
+$env:DCAP_KEY_FILE = "C:\\secure\\dcap.key"
+```
+
+Linux / macOS example:
+
+```bash
+export DCAP_KEY_FILE="/secure/dcap.key"
+```
+
+On POSIX systems, the key file is created with owner-only permissions (`0600`). Keep the key private and do not commit it. If the key is deleted or replaced, all Server and Client Agent instances must use the same newly generated/copied key. The repository's `.gitignore` excludes the runtime key file.
+
+## Browser HTTP API
+
+The local HTTP bridge is intended for the browser UI running on the same machine. It serves the static UI and exposes these routes:
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/`, `/index.html` | Serve the browser UI |
+| `GET` | `/app.js`, `/style.css` | Serve UI assets |
+| `POST` | `/login` | Log in with a JSON `username` |
+| `POST` | `/logout` | Log out the current session |
+| `POST` | `/global_message` | Send a global chat message |
+| `POST` | `/private_message` | Send a private message |
+| `GET` | `/user_list` | Get the online-user list |
+| `GET` | `/events` | Poll queued chat/session/file-transfer events |
+| `GET` | `/status` | Get Client Agent connection/authentication status |
+| `POST` | `/file_upload` | Upload a file using multipart form data (`recipient` and `file` fields) |
+| `POST` | `/file_decision` | Accept or reject an incoming file offer |
+
+JSON request examples:
+
+```json
+{ "username": "alice" }
+```
+
+```json
+{ "content": "Hello everyone" }
+```
+
+```json
+{ "recipient": "bob", "content": "Hello Bob" }
+```
+
+```json
+{ "transfer_id": "transfer-id-hex", "accept": true }
+```
+
+The UI polls the local bridge for events and status; it does not use WebSockets. The bridge accepts local-origin browser requests and is not designed as a public HTTP service.
 
 ## File transfer
 
-Choose an online recipient in the UI and upload a file. The bridge stages the file locally, sends a TCP `FILE_OFFER`, and the recipient is prompted to accept or reject. Accepted file data is sent through the server's UDP relay using the DCAP file-transfer state machine. Received files are written under `received_files/`.
+1. The sender uploads a file through the browser UI. The Client Agent stages the upload under its working directory's `uploads/` folder.
+2. The sender sends a TCP `FILE_OFFER` to the Server.
+3. The recipient accepts or rejects the offer through the UI.
+4. After acceptance, file data and acknowledgements travel over UDP through the Server relay.
+5. The receiver writes the incoming data to a temporary `.part` file, verifies the final size and SHA-256 digest, then renames it to a collision-free filename under `received_files/`.
 
-## Team ownership
+Current implementation limits include:
 
-- Lê Hoàng Phúc: server, TCP sessions, authentication, online users, message routing, UDP service, and file relay.
-- Võ Hoàng Phúc Duy: client connection lifecycle, local HTTP bridge, and browser UI.
-- Protocol/file-transfer work: packet format, payload codecs, UDP reliability, integrity, and security support.
+- Maximum file size: 100 MiB.
+- File chunk data: 1,100 bytes per chunk.
+- Maximum concurrent transfers: bounded by Client and Server limits.
+- Resume after reconnect: not supported in protocol v1; interrupted partial transfers are removed.
 
-## Integration status
+The browser's initial upload progress describes transfer from the browser to its local Client Agent. Delivery progress and final completion are reported separately by the file-transfer events.
 
-The DCAP server, client agent, HTTP bridge, browser login/chat/user-list flow, and file-offer UI are now connected in source. The unused legacy client, connection, file-transfer, and HTTP bridge implementations have been removed; the active DCAP implementation now lives in the standard `client.*` and `http_bridge.*` files.
+## Testing
 
-**Verification note:** the Make targets describe the build and test commands; a successful build or test run is not implied until those commands have been executed in the target development environment.
+The repository contains 23 test executables covering packet and message codecs, transport, authentication, chat routing, UDP service, session management, concurrency, file-transfer state machines, server-relay integration, security, and the HTTP bridge.
+
+Run all tests:
+
+```bash
+make test
+```
+
+Run one test:
+
+```bash
+make run-dcap_login_tests
+```
+
+See [tests/README.md](tests/README.md) for the complete test list and coverage descriptions. Expected success-summary output files are stored in [tests/Expected_Result/](tests/Expected_Result/). The current Make test runner checks each test process's exit code; it does not automatically compare standard output with those expected-result files.
+
+### Latest recorded verification
+
+On Windows with MSYS2 UCRT64 / MinGW-w64 GCC 14.2.0:
+
+- The full `make` build completed successfully.
+- `make test` completed with **23/23 test programs passed**.
+
+This is a reported Windows test run, not a claim that CI has tested every operating system. Linux and macOS builds should be run in their respective environments before treating those platforms as verified.
+
+## Documentation
+
+- [Integration guide](docs/integration-guide.md) — architecture, module responsibilities, build/run integration notes, and team workflow.
+- [Protocol specification](docs/protocol-spec.md) — DCAP v1 wire format, message types, and transport rules.
+- [File-transfer specification](docs/file-transfer-spec.md) — UDP file-transfer state machine, reliability, integrity, and limits.
+- [Test documentation](tests/README.md) — test names, coverage, execution, and known test gaps.
+
+## Security notes and known limitations
+
+- **No password authentication:** protocol v1 authenticates a username only. It is a course-project prototype, not a user-account system.
+- **Shared encryption key:** AES-256-GCM protects packet payloads, but all participants use the same shared key. The current design does not provide per-user keys, automated key exchange/rotation, forward secrecy, or replay protection.
+- **Local HTTP bridge:** the bridge is bound to loopback by default. Do not change it to a public/LAN-facing listener without adding an appropriate authentication and security design.
+- **IPv4:** the current socket and protocol implementation targets IPv4.
+- **No file-transfer resume:** an interrupted transfer must be started again.
+- **Not production hardened:** review the protocol, key distribution, deployment, logging, and threat model before using this project outside its course/demo environment.
+
+## Team responsibilities
+
+| Contributor | Main responsibility |
+|---|---|
+| Lê Hoàng Phúc | Server, TCP sessions, authentication, online-user management, message routing, UDP service, and file relay |
+| Võ Hoàng Phúc Duy | Client connection lifecycle, local HTTP bridge, and browser UI |
+| Nam Anh | Shared protocol, packet/payload codecs, UDP file-transfer logic, reliability, integrity, and security support |
+
+---
+
+**Project context:** Network Application Development course — Distributed and Streaming-Based Client-Server Collaboration Application.
