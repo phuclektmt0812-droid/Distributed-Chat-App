@@ -121,7 +121,7 @@ int readRequest(SocketHandle socket, HttpRequest& request, std::string& error) {
             error = "HTTP request headers are too large";
             return 431;
         }
-            headerEnd = raw.find("\r\n\r\n");
+        headerEnd = raw.find("\r\n\r\n");
     }
     if (headerEnd > MAX_HEADER_BYTES) {
         error = "HTTP request headers are too large";
