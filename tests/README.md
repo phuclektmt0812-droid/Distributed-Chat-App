@@ -61,7 +61,7 @@ make run-dcap_login_tests   # build and run one test
 
 Replace \`dcap_login_tests\` with any of the 24 names in the table above. Integration tests that use the fixed TCP/UDP ports are run sequentially by \`make test\` to avoid port conflicts.
 
-Clean Make-generated outputs with \`make clean\`.
+Run `make test`, `make run-dcap_login_tests`, or `make test-dcap_login_tests` to overwrite `test-results.log` with the latest run's output. `make clean` removes that log. Clean Make-generated outputs with \`make clean\`.
 
 ## Build and run with CMake (optional)
 
