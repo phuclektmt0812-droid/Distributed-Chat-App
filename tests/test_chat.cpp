@@ -33,8 +33,13 @@ int main() {
             "Could not send global message"
         );
 
+        const auto aliceGlobal = test::waitForEvent(alice, "CHAT_ALL");
         const auto bobGlobal = test::waitForEvent(bob, "CHAT_ALL");
         const auto charlieGlobal = test::waitForEvent(charlie, "CHAT_ALL");
+        test::require(
+            aliceGlobal.data.value("content", std::string()) == "hello from alice",
+            "Sender did not receive its own broadcast"
+        );
         test::require(
             bobGlobal.data.value("content", std::string()) == "hello from alice" &&
             bobGlobal.data.value("sender", std::string()) == "alice",
@@ -61,6 +66,14 @@ int main() {
         test::require(
             test::noEvent(charlie, "CHAT_PRIVATE", std::chrono::milliseconds(350)),
             "Private message was incorrectly delivered to Charlie"
+        );
+
+        test::require(alice.sendPrivate("offline-user", "not delivered"),
+                      "Private request should reach server for offline-user validation");
+        const auto offlineError = test::waitForEvent(alice, "ERROR");
+        test::require(
+            offlineError.data.value("code", 0) == protocol::ERR_USER_NOT_FOUND,
+            "Offline recipient did not produce USER_NOT_FOUND"
         );
 
         bob.disconnect();
