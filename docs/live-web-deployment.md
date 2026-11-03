@@ -21,9 +21,9 @@ Implemented routes:
 - `POST /login`, `POST /logout`
 - `GET /status`, `GET /user_list`, `GET /events`
 - `POST /global_message`, `POST /private_message`
-- `POST /file_upload`, `POST /file_decision`
+- `POST /file_upload`, `POST /file_decision`, `GET /file_download?transfer_id=...`
 
-The Gateway uses an HttpOnly, SameSite=Lax session cookie and a different `DcapClient` for each logged-in browser. It rejects cross-origin POST requests, limits active sessions to 64, and expires sessions after 12 hours of inactivity. Uploaded files are staged under `uploads/live-web/<session-token>/`.
+The Gateway uses an HttpOnly, SameSite=Lax session cookie and a different `DcapClient` for each logged-in browser. It rejects cross-origin POST requests, limits active sessions to 64, and expires sessions after 12 hours of inactivity. Uploaded files are staged under `uploads/live-web/<session-token>/`. Incoming files are stored under `received_files/live-web/<session-token>/` and become downloadable from the browser after transfer completion.
 
 ## Build
 
@@ -99,6 +99,6 @@ This is an integration prototype, not a production-ready public service.
 
 - DCAP protocol v1 authenticates by username only. There is no password, account ownership, email verification, or protection against someone claiming another person's currently-unused username. Do not use it for a public community or sensitive conversations.
 - The existing shared AES key remains a shared secret across the Server and Gateway. Keep it private and do not put it in the browser.
-- Add persistent user authentication, login rate limiting, abuse controls, monitoring, and automated session/upload cleanup before a wider public launch.
+- Add persistent user authentication, login rate limiting, abuse controls, monitoring, and automated session/upload/received-file cleanup before a wider public launch.
 - The Gateway uses HTTP polling for events, not WebSockets.
 - The Gateway has not yet been verified with a live VPS, TLS proxy, multi-browser deployment, or a completed end-to-end browser test. Build and smoke-test it in the target environment before sharing a public URL.
