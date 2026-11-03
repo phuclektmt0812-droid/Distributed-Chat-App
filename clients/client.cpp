@@ -499,7 +499,7 @@ void DcapClient::handleUdp(const protocol::Packet& packet) {
         if (receiver->second->state() == filetransfer::ReceiverState::COMPLETED) {
             emit("FILE_COMPLETE", {{"transferId", id},
                 {"filename", receiver->second->completedPath().filename().string()},
-                {"progress", 100}, {"status", "Received"}});
+                {"progress", 100}, {"status", "Received"}, {"received", true}});
             receivers_.erase(receiver);
         } else if (receiver->second->state() == filetransfer::ReceiverState::FAILED) {
             emit("ERROR", {{"error", receiver->second->lastError()}, {"transferId", id}});
