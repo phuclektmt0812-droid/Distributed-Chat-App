@@ -17,7 +17,7 @@ std::string read(const std::string& path) {
 void testHtmlContract(const std::string& html) {
     const std::vector<std::string> ids = {
         "connection-status", "login-section", "chat-section", "login-form",
-        "bridge-url", "username", "logout-button", "user-list",
+        "username", "logout-button", "user-list",
         "global-conversation", "conversation-title", "messages", "message-form",
         "message-input", "upload-form", "file-input", "transfer-list"
     };
@@ -26,6 +26,8 @@ void testHtmlContract(const std::string& html) {
                 "HTML is missing required element id: " + id);
     require(html.find("app.js") != std::string::npos, "HTML does not load app.js");
     require(html.find("style.css") != std::string::npos, "HTML does not load style.css");
+    require(html.find("gateway-url") == std::string::npos,
+            "Login page should not ask users to enter the Gateway URL");
 }
 void testJavascriptContract(const std::string& js) {
     const std::vector<std::string> endpoints = {
@@ -39,6 +41,10 @@ void testJavascriptContract(const std::string& js) {
             "web client does not wait for DOM initialization");
     require(js.find("textContent") != std::string::npos,
             "web client should render untrusted text through textContent");
+    require(js.find("window.location.origin") != std::string::npos,
+            "web client should derive its API address from the current website origin");
+    require(js.find("window.confirm") == std::string::npos,
+            "file offers should use visible in-page controls instead of a background confirm dialog");
 }
 }
 int main() {
