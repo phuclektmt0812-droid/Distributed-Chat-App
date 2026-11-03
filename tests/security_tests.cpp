@@ -11,14 +11,20 @@ int main() {
     original.type=protocol::Type::MSG; original.sequence=42;
     original.payload={0x00,0x01,0x7F,0x80,0xFE,0xFF};
     protocol::Bytes wire;
-    assert(protocol::encodeSecurePacket(original,key,wire));
+    const bool encoded = protocol::encodeSecurePacket(original,key,wire);
+    assert(encoded);
+    if (!encoded || wire.empty()) {
+        std::cerr << "Failed to encode secure packet\n";
+        return 1;
+    }
     assert(wire.size()==protocol::HEADER_SIZE+original.payload.size()+28);
     protocol::Packet decoded;
     assert(protocol::decodeSecurePacket(wire.data(),wire.size(),key,decoded));
     assert(decoded.type==original.type && decoded.sequence==original.sequence && decoded.payload==original.payload);
     protocol::Packet rejected;
     assert(!protocol::decodeSecurePacket(wire.data(),wire.size(),wrongKey,rejected));
-    auto tampered=wire; tampered.back()^=0x01;
+    auto tampered=wire;
+    tampered.at(tampered.size()-1)^=0x01;
     assert(!protocol::decodeSecurePacket(tampered.data(),tampered.size(),key,rejected));
     tampered=wire; tampered[6]^=0x01;
     assert(!protocol::decodeSecurePacket(tampered.data(),tampered.size(),key,rejected));
