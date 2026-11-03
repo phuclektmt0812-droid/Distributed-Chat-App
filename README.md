@@ -302,6 +302,7 @@ The local HTTP bridge is intended for the browser UI running on the same machine
 | `GET` | `/status` | Get Client Agent connection/authentication status |
 | `POST` | `/file_upload` | Upload a file using multipart form data (`recipient` and `file` fields) |
 | `POST` | `/file_decision` | Accept or reject an incoming file offer |
+| `GET` | `/file_download` | Download a completed incoming file for the current browser session (public Gateway) |
 
 JSON request examples:
 
