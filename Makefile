@@ -60,7 +60,8 @@ TESTS = dcap_protocol_tests \
         dcap_http_bridge_tests \
         dcap_web_asset_tests
 
-.PHONY: all app server clients tests test check clean $(TESTS)
+.PHONY: all app server clients tests test test-one check clean list-tests $(TESTS) \
+        $(addprefix test-,$(TESTS))
 
 # Default: build the server, client, and every test executable.
 all: app tests
@@ -127,10 +128,33 @@ test: tests
 
 check: test
 
-# Build and run one test, e.g. make run-dcap_login_tests.
+# Build and run one test using either:
+#   make run-dcap_login_tests
+#   make test-dcap_login_tests
 .PHONY: run-%
 run-%: $(TEST_BUILD_DIR)/%$(EXEEXT)
 	@./$<
+
+# Convenient explicit aliases for every registered test.
+$(foreach name,$(TESTS),$(eval test-$(name): run-$(name)))
+
+# Alternative single-test interface:
+#   make test-one TEST=dcap_login_tests
+test-one:
+	@if [ -z "$(TEST)" ]; then \
+		echo "Usage: make test-one TEST=<test-name>"; \
+		echo "Run 'make list-tests' to see available tests."; \
+		exit 2; \
+	fi
+	@if ! echo " $(TESTS) " | grep -q " $(TEST) "; then \
+		echo "Unknown test: $(TEST)"; \
+		echo "Run 'make list-tests' to see available tests."; \
+		exit 2; \
+	fi
+	@$(MAKE) --no-print-directory run-$(TEST)
+
+list-tests:
+	@printf '%s\\n' $(TESTS)
 
 clean:
 	rm -rf $(BUILD_DIR) server_app$(EXEEXT) client_agent$(EXEEXT)
