@@ -36,19 +36,37 @@ There are 23 registered CTest programs. A program may contain several
 assertions/scenarios; the table intentionally describes logical coverage rather
 than claiming each assertion is a separate CTest case.
 
-## Build and run
+## Build and run with GNU Make (no CMake required)
 
-From the repository root:
+Run from the repository root:
+
+\`\`\`bash
+# Build server, client, and all 23 test executables
+make
+
+# Or build only the test executables
+make tests
+
+# Build and run all tests sequentially
+make test
+\`\`\`
+
+To build or run an individual test, use its CTest name as a Make target. For example:
+
+\`\`\`bash
+make dcap_login_tests
+./make-build/tests/dcap_login_tests
+\`\`\`
+
+Replace \`dcap_login_tests\` with any of the 23 names in the table above. Integration tests that use the fixed TCP/UDP ports are run sequentially by \`make test\` to avoid port conflicts.
+
+Clean Make-generated outputs with \`make clean\`.
+
+## Build and run with CMake (optional)
 
 \`\`\`bash
 cmake -S . -B build
 cmake --build build --config Debug
-ctest --test-dir build --output-on-failure
-\`\`\`
-
-On multi-configuration generators such as Visual Studio:
-
-\`\`\`bash
 ctest --test-dir build -C Debug --output-on-failure
 \`\`\`
 
