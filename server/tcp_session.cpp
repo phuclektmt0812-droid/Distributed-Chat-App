@@ -170,7 +170,10 @@ void TcpSession::run() {
         if(session_) server_.removeSession(session_);
         shutdownSocket(socket_); closeSocket(socket_); return;
     }
-    setSocketTimeout(socket_,120000,10000);
+    // Give clients a longer grace period for brief sleep/network interruptions.
+    // Active clients send TCP PING frames periodically while idle.
+    constexpr int AUTHENTICATED_TCP_IDLE_TIMEOUT_MS = 10 * 60 * 1000;
+    setSocketTimeout(socket_,AUTHENTICATED_TCP_IDLE_TIMEOUT_MS,10000);
     Packet p;
     while(server_.running() && receiveTcpPacketSecure(socket_,p,server_.encryptionKey())) {
         if(isUdpType(p.type)) break;
