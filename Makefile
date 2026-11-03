@@ -154,7 +154,7 @@ test-one:
 	@$(MAKE) --no-print-directory run-$(TEST)
 
 list-tests:
-	@printf '%s\\n' $(TESTS)
+	@printf '%s\n' $(TESTS)
 
 clean:
 	rm -rf $(BUILD_DIR) server_app$(EXEEXT) client_agent$(EXEEXT)
