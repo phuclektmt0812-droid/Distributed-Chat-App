@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <filesystem>
 #include <stdexcept>
+#include <utility>
 
 namespace filetransfer {
 namespace fs = std::filesystem;
@@ -13,11 +14,13 @@ protocol::Packet packet(protocol::Type type, std::uint32_t seq, const protocol::
 } // namespace
 
 FileSender::FileSender(const std::string& path, const std::string& recipient,
-                       protocol::SequenceCounter& sequence)
+                       protocol::SequenceCounter& sequence, std::string displayFilename)
     : sequence_(sequence), source_(path, std::ios::binary) {
     if (!source_ || !fs::is_regular_file(path)) throw std::runtime_error("input must be a regular file");
     offer_.id = fileproto::randomId(); offer_.recipient=recipient;
-    offer_.filename=fs::path(path).filename().string();
+    offer_.filename = displayFilename.empty()
+        ? fs::path(path).filename().u8string()
+        : std::move(displayFilename);
     offer_.size=fs::file_size(path);
     offer_.chunks=fileproto::chunkCount(offer_.size);
     offer_.sha256=fileproto::sha256File(path);
