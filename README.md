@@ -109,4 +109,4 @@ Choose an online recipient in the UI and upload a file. The bridge stages the fi
 
 The DCAP server, client agent, HTTP bridge, browser login/chat/user-list flow, and file-offer UI are now connected in source. The unused legacy client, connection, file-transfer, and HTTP bridge implementations have been removed; the active DCAP implementation now lives in the standard `client.*` and `http_bridge.*` files.
 
-**Build and tests have intentionally not been run yet**, as requested. Compilation, runtime behavior, and end-to-end file delivery are therefore not verified. Dedicated DCAP protocol, client/server integration, and file-transfer tests are still needed before considering the integration complete.
+**Verification note:** the Make targets describe the build and test commands; a successful build or test run is not implied until those commands have been executed in the target development environment.
