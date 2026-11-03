@@ -12,8 +12,8 @@ fs::path makeSource(const fs::path& root, const std::string& name) {
     const auto path = root / name;
     std::ofstream out(path, std::ios::binary);
     test::require(static_cast<bool>(out), "could not create relay fixture");
-    const char bytes[] = "relay-test-payload";
-    out.write(bytes, sizeof(bytes) - 1);
+    const std::string bytes(2 * 1024 * 1024, 'R');
+    out.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
     test::require(static_cast<bool>(out), "could not write relay fixture");
     return path;
 }
@@ -27,26 +27,29 @@ void waitForOffers(DcapClient& receiver, std::size_t count) {
     }
     test::require(seen == count, "receiver did not receive expected number of FILE_OFFER events");
 }
-void testReceiverRejectsOffer() {
+void testReceiverAutomaticallyAcceptsOffer() {
     const auto root = fs::temp_directory_path() /
-        ("dcap-relay-reject-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+        ("dcap-relay-auto-accept-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     fs::create_directories(root);
-    const auto source = makeSource(root, "reject.bin");
+    const auto source = makeSource(root, "automatic.bin");
     {
         test::TestServer server;
         DcapClient sender("127.0.0.1"), receiver("127.0.0.1");
-        test::connectAndLogin(sender, "relay-sender");
-        test::connectAndLogin(receiver, "relay-receiver");
-        const auto id = sender.sendFile("relay-receiver", source);
-        test::require(!id.empty(), "could not submit transfer offer");
+        test::connectAndLogin(sender, "relay-sender-auto");
+        test::connectAndLogin(receiver, "relay-receiver-auto");
+        const auto id = sender.sendFile("relay-receiver-auto", source);
+        test::require(!id.empty(), "could not submit automatic transfer");
         const auto offer = test::waitForEvent(receiver, "FILE_OFFER");
         test::require(offer.data.value("transferId", std::string()) == id,
                       "wrong offer delivered to recipient");
-        test::require(receiver.decideFile(id, false), "recipient could not reject offer");
-        const auto result = test::waitForEvent(sender, "FILE_RESULT");
-        test::require(result.data.value("transferId", std::string()) == id &&
-                      result.data.value("status", -1) == 0,
-                      "rejected transfer did not report failure result");
+        test::require(offer.data.value("autoAccepted", false),
+                      "recipient did not auto-accept the offer");
+
+        const auto senderDone = test::waitForEvent(sender, "FILE_COMPLETE", std::chrono::seconds(30));
+        const auto receiverDone = test::waitForEvent(receiver, "FILE_COMPLETE", std::chrono::seconds(30));
+        test::require(senderDone.data.value("transferId", std::string()) == id &&
+                      receiverDone.data.value("transferId", std::string()) == id,
+                      "automatically accepted transfer did not complete on both clients");
     }
     std::error_code ec; fs::remove_all(root, ec);
 }
@@ -121,7 +124,7 @@ void testPerSenderTransferLimit() {
 }
 int main() {
     try {
-        testReceiverRejectsOffer();
+        testReceiverAutomaticallyAcceptsOffer();
         testTransferExpires();
         testDisconnectCancelsPendingTransfer();
         testPerSenderTransferLimit();
