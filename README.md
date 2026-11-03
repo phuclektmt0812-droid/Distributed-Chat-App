@@ -139,14 +139,15 @@ make
 
 On macOS, use `gmake` instead of `make`.
 
-The default target builds the Server, Client Agent, and all 23 test executables. It does **not** run the tests.
+The default target builds the Server, Client Agent, Public Web Gateway, and all 23 test executables. It does **not** run the tests.
 
 | Command | Action |
 |---|---|
 | `make` | Build Server, Client Agent, and all test executables |
-| `make app` | Build Server and Client Agent only |
+| `make app` | Build Server, Client Agent, and Public Web Gateway |
 | `make server` | Build Server only |
 | `make clients` | Build Client Agent only |
+| `make live-web-gateway` | Build the public browser Gateway only |
 | `make tests` | Build all test executables without running them |
 | `make test` | Build and run all 23 tests sequentially |
 | `make dcap_login_tests` | Build one test executable |
@@ -160,6 +161,7 @@ Replace `dcap_login_tests` with any test target listed by `make list-tests`.
 Build outputs:
 
 - `server_app` / `server_app.exe` and `client_agent` / `client_agent.exe` are created in the repository root.
+- The optional public browser Gateway is created as `live_web_gateway` / `live_web_gateway.exe`.
 - Test executables are created under `make-build/tests/`.
 
 ### CMake (optional)
@@ -371,6 +373,7 @@ This is a reported Windows test run, not a claim that CI has tested every operat
 - [Protocol specification](docs/protocol-spec.md) — DCAP v1 wire format, message types, and transport rules.
 - [File-transfer specification](docs/file-transfer-spec.md) — UDP file-transfer state machine, reliability, integrity, and limits.
 - [Test documentation](tests/README.md) — test names, coverage, execution, and known test gaps.
+- [Public Web Gateway deployment guide](docs/live-web-deployment.md) — experimental multi-session browser Gateway, local testing, and HTTPS reverse proxy.
 
 ## Security notes and known limitations
 
