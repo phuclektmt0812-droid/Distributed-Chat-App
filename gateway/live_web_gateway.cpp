@@ -10,8 +10,10 @@
 #include <cctype>
 #include <climits>
 #include <cstdlib>
+#include <deque>
 #include <fstream>
 #include <iomanip>
+#include <iostream>
 #include <iterator>
 #include <limits>
 #include <map>
@@ -489,17 +491,23 @@ std::string LiveWebGateway::sessionTokenFromCookie(const std::string& cookie) co
 
 std::shared_ptr<LiveWebGateway::Session> LiveWebGateway::findSession(const std::string& token) {
     if (token.empty()) return {};
-    std::lock_guard<std::mutex> lock(sessions_mutex_);
-    const auto found = sessions_.find(token);
-    if (found == sessions_.end()) return {};
-    const auto now = nowMs();
-    const auto last = found->second->last_activity_ms.load();
-    if (now >= last && now - last > SESSION_IDLE_TIMEOUT_MS) {
-        sessions_.erase(found);
-        return {};
+    std::shared_ptr<Session> expired;
+    {
+        std::lock_guard<std::mutex> lock(sessions_mutex_);
+        const auto found = sessions_.find(token);
+        if (found == sessions_.end()) return {};
+        const auto now = nowMs();
+        const auto last = found->second->last_activity_ms.load();
+        if (now >= last && now - last > SESSION_IDLE_TIMEOUT_MS) {
+            expired = std::move(found->second);
+            sessions_.erase(found);
+        } else {
+            found->second->last_activity_ms = now;
+            return found->second;
+        }
     }
-    found->second->last_activity_ms = now;
-    return found->second;
+    if (expired) expired->client->logout();
+    return {};
 }
 
 void LiveWebGateway::handleConnection(SocketHandle socket) {
@@ -565,16 +573,9 @@ void LiveWebGateway::handleConnection(SocketHandle socket) {
                         status = 400;
                         response = {{"error", "Username must be valid UTF-8 and at most 32 bytes"}};
                     } else {
+                        expireIdleSessions();
                         {
                             std::lock_guard<std::mutex> lock(sessions_mutex_);
-                            const auto now = nowMs();
-                            for (auto it = sessions_.begin(); it != sessions_.end();) {
-                                const auto last = it->second->last_activity_ms.load();
-                                if (now >= last && now - last > SESSION_IDLE_TIMEOUT_MS)
-                                    it = sessions_.erase(it);
-                                else
-                                    ++it;
-                            }
                             if (sessions_.size() >= MAX_ACTIVE_SESSIONS) {
                                 status = 429;
                                 response = {{"error", "The public gateway is at session capacity"}};
