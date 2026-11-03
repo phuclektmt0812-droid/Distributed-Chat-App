@@ -271,6 +271,18 @@ export DCAP_KEY_FILE="/secure/dcap.key"
 
 On POSIX systems, the key file is created with owner-only permissions (`0600`). Keep the key private and do not commit it. If the key is deleted or replaced, all Server and Client Agent instances must use the same newly generated/copied key. The repository's `.gitignore` excludes the runtime key file.
 
+## Public browser gateway (experimental)
+
+The `live-web` branch adds an optional `live_web_gateway` executable. It serves the browser UI over HTTP and creates an independent DCAP TCP/UDP client session for each browser login, so remote users do not need to run `client_agent` locally.
+
+Build it with:
+
+```bash
+make live-web-gateway
+```
+
+See [Public Web Gateway deployment guide](docs/live-web-deployment.md) for local testing and HTTPS reverse-proxy deployment. The current DCAP protocol still uses username-only authentication; do not expose this prototype to untrusted public users until real user authentication and abuse protections are added.
+
 ## Browser HTTP API
 
 The local HTTP bridge is intended for the browser UI running on the same machine. It serves the static UI and exposes these routes:
