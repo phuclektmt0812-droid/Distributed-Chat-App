@@ -82,8 +82,12 @@ client_agent$(EXEEXT): $(CORE) $(CLIENT)
 #   make dcap_file_transfer_integration_tests
 define TEST_template
 $(TEST_BUILD_DIR)/$(1)$(EXEEXT): $(2) $(3)
+ifeq ($(OS),Windows_NT)
+	@if not exist "$(TEST_BUILD_DIR)" mkdir "$(TEST_BUILD_DIR)"
+else
 	@mkdir -p $(TEST_BUILD_DIR)
-	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(2) $(3) $(LDLIBS) $(THREADS) -o $$@
+endif
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(2) $(3) $(LDLIBS) $(THREADS) -o $@
 
 .PHONY: $(1)
 $(1): $(TEST_BUILD_DIR)/$(1)$(EXEEXT)
@@ -117,14 +121,19 @@ tests: $(addprefix $(TEST_BUILD_DIR)/,$(addsuffix $(EXEEXT),$(TESTS)))
 
 # Execute tests serially. Several integration tests bind the same fixed TCP/UDP
 # ports (54000/54001), so parallel test execution is intentionally avoided.
+ifeq ($(OS),Windows_NT)
+test: tests
+	@powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-tests.ps1 -TestDirectory "$(TEST_BUILD_DIR)" -Tests "$(TESTS)"
+else
 test: tests
 	@set -e; for name in $(TESTS); do \
 		echo ""; \
-		echo "========== $$name =========="; \
-		./$(TEST_BUILD_DIR)/$$name$(EXEEXT); \
+		echo "========== $name =========="; \
+		./$(TEST_BUILD_DIR)/$name$(EXEEXT); \
 	done
 	@echo ""
 	@echo "All $(words $(TESTS)) test programs passed."
+endif
 
 check: test
 
@@ -133,7 +142,11 @@ check: test
 #   make test-dcap_login_tests
 .PHONY: run-%
 run-%: $(TEST_BUILD_DIR)/%$(EXEEXT)
+ifeq ($(OS),Windows_NT)
+	@powershell -NoProfile -ExecutionPolicy Bypass -Command "& '$(TEST_BUILD_DIR)/$*$(EXEEXT)'; exit $LASTEXITCODE"
+else
 	@./$<
+endif
 
 # Convenient explicit aliases for every registered test.
 $(foreach name,$(TESTS),$(eval test-$(name): run-$(name)))
