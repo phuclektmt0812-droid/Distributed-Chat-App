@@ -34,7 +34,7 @@ constexpr std::size_t MAX_HEADER_BYTES = 16 * 1024;
 constexpr std::size_t MAX_HTTP_BODY_BYTES = 17ULL * 1024ULL * 1024ULL;
 constexpr std::uint64_t MAX_GATEWAY_FILE_SIZE = 16ULL * 1024ULL * 1024ULL;
 constexpr std::size_t MAX_ACTIVE_SESSIONS = 64;
-constexpr std::size_t MAX_ACTIVE_HTTP_WORKERS = 16;
+constexpr std::size_t MAX_ACTIVE_HTTP_WORKERS = 8;
 constexpr std::uint64_t SESSION_IDLE_TIMEOUT_MS = 12ULL * 60ULL * 60ULL * 1000ULL;
 
 struct HttpRequest {
