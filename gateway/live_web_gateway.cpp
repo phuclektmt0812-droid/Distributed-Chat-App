@@ -663,7 +663,7 @@ void LiveWebGateway::handleConnection(SocketHandle socket) {
                     }
                     session->client->logout();
                 }
-                extraHeaders = "Set-Cookie: dcap_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0" +
+                extraHeaders = std::string("Set-Cookie: dcap_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0") +
                     (std::getenv("DCAP_COOKIE_SECURE") &&
                      std::string(std::getenv("DCAP_COOKIE_SECURE")) == "0" ? "" : "; Secure") +
                     "\r\n";
