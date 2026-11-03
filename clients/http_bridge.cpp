@@ -253,7 +253,7 @@ void DcapHttpBridge::handleConnection(SocketHandle socket) {
                             }
                             if(event.type=="SIGNUP_FAIL") {
                                 const auto code=event.data.value("code",0);
-                                status=code==protocol::ACCOUNT_EXISTS?409:400;
+                                status=code==protocol::ERR_ACCOUNT_EXISTS?409:400;
                                 response={{"error",event.data.value("error",std::string("Sign-up rejected"))},{"code",code}};
                                 done=true; break;
                             }
@@ -285,7 +285,7 @@ void DcapHttpBridge::handleConnection(SocketHandle socket) {
                             if(event.type=="LOGIN_OK") { done=true; break; }
                             if(event.type=="LOGIN_FAIL") {
                                 const auto code=event.data.value("code",0);
-                                status=code==protocol::ACCOUNT_ALREADY_ONLINE?409:401;
+                                status=code==protocol::ERR_ACCOUNT_ALREADY_ONLINE?409:401;
                                 response={{"error",event.data.value("error",std::string("Login rejected"))},{"code",code}};
                                 done=true; break;
                             }
