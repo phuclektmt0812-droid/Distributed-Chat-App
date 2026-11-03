@@ -29,7 +29,8 @@ struct AgentEvent {
 class DcapClient {
 public:
     DcapClient(std::string server_address, std::uint16_t server_port = 54000,
-               std::uint16_t udp_port = 54001);
+               std::uint16_t udp_port = 54001,
+               std::filesystem::path received_files_directory = {});
     ~DcapClient();
 
     bool connect();
@@ -64,6 +65,7 @@ private:
     std::string server_address_;
     std::uint16_t server_port_;
     std::uint16_t udp_port_;
+    std::filesystem::path received_files_directory_;
     sockaddr_in server_udp_{};
     protocol::EncryptionKey encryption_key_{};
 
