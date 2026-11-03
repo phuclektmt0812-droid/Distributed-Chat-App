@@ -34,7 +34,8 @@ public:
     ~DcapClient();
 
     bool connect();
-    bool login(const std::string& username);
+    bool registerAccount(const std::string& username, const std::string& password);
+    bool login(const std::string& username, const std::string& password);
     void logout();
     void disconnect();
 
