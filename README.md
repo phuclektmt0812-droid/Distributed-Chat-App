@@ -66,7 +66,7 @@ The Server binds its TCP and UDP sockets to all local IPv4 interfaces. The Clien
 ├── docs/
 │   ├── integration-guide.md # Architecture, module roles, integration notes
 │   ├── protocol-spec.md     # DCAP v1 packet and message specification
-│   └── file-transfer-spec.md# UDP file-transfer protocol and reliability
+│   └── file-transfer-spec.md # UDP file-transfer protocol and reliability
 ├── platform/                # Windows/POSIX socket compatibility
 ├── protocol/                # Packet codec, payloads, security, file messages
 ├── scripts/                 # Test runner scripts (PowerShell on Windows)
@@ -101,7 +101,7 @@ pacman -S --needed \
   mingw-w64-ucrt-x86_64-nlohmann-json
 ```
 
-Use the UCRT64 compiler (normally `C:\\msys64\\ucrt64\\bin\\g++.exe`). Make sure the `g++` found by PowerShell is from this same UCRT64 environment. The Makefile's Windows test runner uses PowerShell.
+Use the UCRT64 compiler (normally `C:\msys64\ucrt64\bin\g++.exe`). Make sure the `g++` found by PowerShell is from this same UCRT64 environment. The Makefile's Windows test runner uses PowerShell.
 
 ### Linux — Ubuntu / Debian
 
@@ -183,7 +183,7 @@ Open a terminal:
 **Windows PowerShell**
 
 ```powershell
-.\\server_app.exe
+.\server_app.exe
 ```
 
 **Linux / macOS**
@@ -201,7 +201,7 @@ Open a second terminal in the repository root:
 **Windows PowerShell**
 
 ```powershell
-.\\client_agent.exe 127.0.0.1 54000 8080
+.\client_agent.exe 127.0.0.1 54000 8080
 ```
 
 **Linux / macOS**
@@ -243,7 +243,7 @@ Press Enter in the Client Agent terminal to stop the Client Agent. Press Enter i
 5. Start each Client Agent with the Server machine's LAN IPv4 address:
 
 ```powershell
-.\\client_agent.exe 192.168.1.10 54000 8080
+.\client_agent.exe 192.168.1.10 54000 8080
 ```
 
 Replace `192.168.1.10` with the actual Server LAN address. Open the browser on the same machine as that Client Agent at `http://127.0.0.1:8080/`. If multiple Client Agents run on one computer, give each one a different local HTTP port (for example, `8080` and `8081`).
@@ -260,7 +260,7 @@ The HTTP bridge remains local to each Client Agent machine. It is not the port t
 PowerShell example:
 
 ```powershell
-$env:DCAP_KEY_FILE = "C:\\secure\\dcap.key"
+$env:DCAP_KEY_FILE = "C:\secure\dcap.key"
 ```
 
 Linux / macOS example:
