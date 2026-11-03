@@ -301,7 +301,7 @@ The local HTTP bridge is intended for the browser UI running on the same machine
 | `GET` | `/events` | Poll queued chat/session/file-transfer events |
 | `GET` | `/status` | Get Client Agent connection/authentication status |
 | `POST` | `/file_upload` | Upload a file using multipart form data (`recipient` and `file` fields) |
-| `POST` | `/file_decision` | Accept or reject an incoming file offer |
+| `POST` | `/file_decision` | Legacy manual decision route; the current clients accept incoming files automatically |
 | `GET` | `/file_download` | Download a completed incoming file for the current browser session (public Gateway) |
 
 JSON request examples:
@@ -328,8 +328,8 @@ The UI polls the local bridge for events and status; it does not use WebSockets.
 
 1. The sender uploads a file through the browser UI. The Client Agent stages the upload under its working directory's `uploads/` folder.
 2. The sender sends a TCP `FILE_OFFER` to the Server.
-3. The recipient accepts or rejects the offer through the UI.
-4. After acceptance, file data and acknowledgements travel over UDP through the Server relay.
+3. The recipient client automatically prepares the receiver and acknowledges the offer; no user prompt or manual acceptance is required.
+4. File data and acknowledgements then travel over UDP through the Server relay.
 5. The receiver writes the incoming data to a temporary `.part` file, verifies the final size and SHA-256 digest, then renames it to a collision-free filename under `received_files/`.
 
 Current implementation limits include:
