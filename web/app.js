@@ -19,17 +19,17 @@ let sessionGeneration = 0;
 const EVENT_POLL_INTERVAL = 800;
 const STATUS_POLL_INTERVAL = 5000;
 
-function bridgeUrl(path) {
-    const configuredUrl = elements.bridgeUrl.value.trim();
+function gatewayUrl(path) {
+    const configuredUrl = elements.gatewayUrl.value.trim();
     if (!configuredUrl) {
-        throw new Error("Enter the bridge address first.");
+        throw new Error("Enter the gateway address first.");
     }
 
     return new URL(path, `${configuredUrl.replace(/\/+$/, "")}/`).toString();
 }
 
 async function requestJson(path, options = {}) {
-    const response = await fetch(bridgeUrl(path), {
+    const response = await fetch(gatewayUrl(path), {
         ...options,
         headers: {
             ...(options.body ? { "Content-Type": "application/json" } : {}),
@@ -43,12 +43,12 @@ async function requestJson(path, options = {}) {
         try {
             payload = JSON.parse(responseText);
         } catch {
-            throw new Error("The bridge returned an invalid response.");
+            throw new Error("The gateway returned an invalid response.");
         }
     }
 
     if (!response.ok) {
-        throw new Error(payload.error || `Bridge request failed (${response.status}).`);
+        throw new Error(payload.error || `gateway request failed (${response.status}).`);
     }
 
     return payload;
@@ -134,7 +134,7 @@ async function login() {
     } catch (error) {
         state.authenticated = false;
         state.currentUser = null;
-        showNotice(error.message || "Unable to connect to the bridge.", "error");
+        showNotice(error.message || "Unable to connect to the gateway.", "error");
         setConnectionStatus("disconnected", "Disconnected");
     } finally {
         setButtonBusy(elements.loginButton, false);
@@ -451,7 +451,7 @@ async function pollEvents() {
         }
     } catch (error) {
         if (state.eventPollingActive) {
-            showNotice(error.message || "Bridge communication failed.", "error");
+            showNotice(error.message || "gateway communication failed.", "error");
             if (error.message && /authentication required|unauthorized/i.test(error.message)) {
                 stopEventPolling();
                 state.authenticated = false;
@@ -495,7 +495,7 @@ async function refreshConnectionStatus() {
         const connected = result.connected === true;
         const authenticated = result.authenticated === true;
         setConnectionStatus(connected ? "connected" : "disconnected",
-            connected ? "Connected to bridge" : "Bridge disconnected");
+            connected ? "Connected to gateway" : "gateway disconnected");
 
         if (generation !== sessionGeneration) {
             return;
@@ -527,7 +527,7 @@ async function refreshConnectionStatus() {
             );
         }
     } catch {
-        setConnectionStatus("disconnected", "Bridge unavailable");
+        setConnectionStatus("disconnected", "gateway unavailable");
     } finally {
         statusPollInFlight = false;
         statusPollTimer = window.setTimeout(refreshConnectionStatus, STATUS_POLL_INTERVAL);
@@ -606,11 +606,11 @@ function uploadFile() {
         id: `upload-${Date.now()}`,
         filename: file.name,
         progress: 0,
-        status: "Uploading to bridge"
+        status: "Uploading to gateway"
     };
     state.activeTransfers.push(transfer);
     renderTransfers();
-    showNotice(`Uploading ${file.name} to the bridge.`, "info");
+    showNotice(`Uploading ${file.name} to the gateway.`, "info");
     setButtonBusy(elements.uploadButton, true, "Uploading...");
 
     const formData = new FormData();
@@ -619,11 +619,11 @@ function uploadFile() {
 
     const request = new XMLHttpRequest();
     try {
-        request.open("POST", bridgeUrl("/file_upload"));
+        request.open("POST", gatewayUrl("/file_upload"));
     } catch (error) {
         transfer.status = "Upload failed";
         renderTransfers();
-        showNotice(error.message || "Enter a valid bridge address.", "error");
+        showNotice(error.message || "Enter a valid gateway address.", "error");
         setButtonBusy(elements.uploadButton, false);
         return;
     }
@@ -636,9 +636,9 @@ function uploadFile() {
     request.addEventListener("load", () => {
         const payload = parseXhrResponse(request);
         if (request.status >= 200 && request.status < 300) {
-            transfer.status = "Uploaded to bridge; awaiting recipient confirmation";
+            transfer.status = "Uploaded to gateway; awaiting recipient confirmation";
             showNotice(
-                "Uploaded to bridge. This does not confirm UDP delivery to the recipient.",
+                "Uploaded to gateway. This does not confirm UDP delivery to the recipient.",
                 "success"
             );
         } else {
@@ -653,7 +653,7 @@ function uploadFile() {
     request.addEventListener("error", () => {
         transfer.status = "Upload failed";
         renderTransfers();
-        showNotice("Could not communicate with the bridge during upload.", "error");
+        showNotice("Could not communicate with the gateway during upload.", "error");
         setButtonBusy(elements.uploadButton, false);
     });
 
@@ -674,7 +674,7 @@ function parseXhrResponse(request) {
     try {
         return JSON.parse(request.responseText);
     } catch {
-        return { error: "The bridge returned an invalid response." };
+        return { error: "The gateway returned an invalid response." };
     }
 }
 
@@ -700,12 +700,12 @@ async function logout() {
         });
         showNotice("You have logged out.", "info");
     } catch (error) {
-        showNotice(`Logged out locally, but bridge logout failed: ${error.message}`, "error");
+        showNotice(`Logged out locally, but gateway logout failed: ${error.message}`, "error");
     }
 }
 
 function initialize() {
-    elements.bridgeUrl = document.getElementById("bridge-url");
+    elements.gatewayUrl = document.getElementById("gateway-url");
     elements.loginSection = document.getElementById("login-section");
     elements.chatSection = document.getElementById("chat-section");
     elements.loginForm = document.getElementById("login-form");
@@ -731,9 +731,9 @@ function initialize() {
 
     const configuredUrl = window.CHAT_API_BASE_URL;
     if (typeof configuredUrl === "string" && configuredUrl.trim()) {
-        elements.bridgeUrl.value = configuredUrl.trim();
+        elements.gatewayUrl.value = configuredUrl.trim();
     } else if (window.location.protocol === "http:" || window.location.protocol === "https:") {
-        elements.bridgeUrl.value = window.location.origin;
+        elements.gatewayUrl.value = window.location.origin;
     }
 
     elements.loginForm.addEventListener("submit", event => {
