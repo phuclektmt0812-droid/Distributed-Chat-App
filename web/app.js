@@ -6,7 +6,8 @@ const state = {
     currentRecipient: null,
     messages: [],
     activeTransfers: [],
-    eventPollingActive: false
+    eventPollingActive: false,
+    gatewayBaseUrl: ""
 };
 
 const elements = {};
@@ -20,12 +21,11 @@ const EVENT_POLL_INTERVAL = 800;
 const STATUS_POLL_INTERVAL = 5000;
 
 function gatewayUrl(path) {
-    const configuredUrl = elements.gatewayUrl.value.trim();
-    if (!configuredUrl) {
-        throw new Error("Enter the gateway address first.");
+    if (!state.gatewayBaseUrl) {
+        throw new Error("The chat gateway address is unavailable.");
     }
 
-    return new URL(path, `${configuredUrl.replace(/\/+$/, "")}/`).toString();
+    return new URL(path, `${state.gatewayBaseUrl.replace(/\/+$/, "")}/`).toString();
 }
 
 async function requestJson(path, options = {}) {
@@ -774,7 +774,6 @@ async function logout() {
 }
 
 function initialize() {
-    elements.gatewayUrl = document.getElementById("gateway-url");
     elements.loginSection = document.getElementById("login-section");
     elements.chatSection = document.getElementById("chat-section");
     elements.loginForm = document.getElementById("login-form");
@@ -800,9 +799,9 @@ function initialize() {
 
     const configuredUrl = window.CHAT_API_BASE_URL;
     if (typeof configuredUrl === "string" && configuredUrl.trim()) {
-        elements.gatewayUrl.value = configuredUrl.trim();
+        state.gatewayBaseUrl = configuredUrl.trim();
     } else if (window.location.protocol === "http:" || window.location.protocol === "https:") {
-        elements.gatewayUrl.value = window.location.origin;
+        state.gatewayBaseUrl = window.location.origin;
     }
 
     elements.loginForm.addEventListener("submit", event => {
