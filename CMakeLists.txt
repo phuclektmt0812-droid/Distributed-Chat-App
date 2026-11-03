@@ -11,7 +11,7 @@ find_package(nlohmann_json CONFIG QUIET)
 if(NOT TARGET nlohmann_json::nlohmann_json)
     find_path(NLOHMANN_JSON_INCLUDE_DIR nlohmann/json.hpp REQUIRED)
     add_library(nlohmann_json INTERFACE)
-    target_include_directories(nlohmann_json INTERFACE "\${NLOHMANN_JSON_INCLUDE_DIR}")
+    target_include_directories(nlohmann_json INTERFACE "${NLOHMANN_JSON_INCLUDE_DIR}")
     add_library(nlohmann_json::nlohmann_json ALIAS nlohmann_json)
 endif()
 
@@ -23,7 +23,7 @@ add_library(chat_protocol STATIC
     protocol/secure_payload.cpp
     platform/socket_compat.cpp
 )
-target_include_directories(chat_protocol PUBLIC "\${CMAKE_CURRENT_SOURCE_DIR}")
+target_include_directories(chat_protocol PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(chat_protocol PUBLIC OpenSSL::Crypto Threads::Threads)
 if(WIN32)
     target_link_libraries(chat_protocol PUBLIC ws2_32)
@@ -43,7 +43,7 @@ add_library(client_file_transfer STATIC
     clients/file_sender.cpp
     clients/file_receiver.cpp
 )
-target_include_directories(client_file_transfer PUBLIC "\${CMAKE_CURRENT_SOURCE_DIR}")
+target_include_directories(client_file_transfer PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(client_file_transfer PUBLIC chat_protocol)
 
 add_executable(client_agent
@@ -51,7 +51,7 @@ add_executable(client_agent
     clients/dcap_client.cpp
     clients/dcap_http_bridge.cpp
 )
-target_include_directories(client_agent PRIVATE "\${CMAKE_CURRENT_SOURCE_DIR}")
+target_include_directories(client_agent PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(client_agent PRIVATE client_file_transfer chat_protocol nlohmann_json::nlohmann_json)
 
 # Shared current-protocol server/client/HTTP implementation for integration tests.
@@ -64,7 +64,7 @@ add_library(dcap_test_support STATIC
     clients/dcap_client.cpp
     clients/dcap_http_bridge.cpp
 )
-target_include_directories(dcap_test_support PUBLIC "\${CMAKE_CURRENT_SOURCE_DIR}")
+target_include_directories(dcap_test_support PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(dcap_test_support
     PUBLIC client_file_transfer chat_protocol nlohmann_json::nlohmann_json
 )
@@ -186,7 +186,7 @@ add_test(NAME dcap_web_asset_tests COMMAND dcap_web_asset_tests)
 set_tests_properties(
     dcap_web_asset_tests
     dcap_http_bridge_tests
-    PROPERTIES WORKING_DIRECTORY "\${CMAKE_CURRENT_SOURCE_DIR}"
+    PROPERTIES WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
 )
 
 # All tests that bind the fixed DCAP TCP/UDP ports must run one at a time.
