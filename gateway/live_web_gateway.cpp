@@ -669,7 +669,8 @@ void LiveWebGateway::handleConnection(SocketHandle socket) {
                         session->pending_events.clear();
                     }
                     for (auto& event : session->client->takeEvents()) {
-                        if (event.type == "FILE_COMPLETE") {
+                        if (event.type == "FILE_COMPLETE" &&
+                            event.data.value("received", false)) {
                             const auto transferId = event.data.value(
                                 "transferId", event.data.value("transfer_id", std::string()));
                             const auto filename = safeFilename(
