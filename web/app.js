@@ -548,6 +548,7 @@ function markTransferComplete(event) {
     const transfer = findOrCreateTransfer(event);
     transfer.progress = 100;
     transfer.status = "Complete";
+    transfer.downloadUrl = typeof event.download_url === "string" ? event.download_url : "";
     renderTransfers();
     showNotice(`Transfer ${transfer.filename || transfer.id} complete.`, "success");
 }
@@ -582,6 +583,13 @@ function renderTransfers() {
         progress.setAttribute("aria-label", `${label.textContent} progress`);
         status.textContent = `${transfer.status} (${Math.round(transfer.progress)}%)`;
         item.append(label, progress, status);
+        if (transfer.downloadUrl) {
+            const download = document.createElement("a");
+            download.href = transfer.downloadUrl;
+            download.textContent = "Download received file";
+            download.rel = "noopener";
+            item.append(download);
+        }
         elements.transferList.append(item);
     }
 }
