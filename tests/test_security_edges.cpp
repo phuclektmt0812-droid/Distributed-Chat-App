@@ -36,7 +36,9 @@ void testSecurePacketEdges() {
     require(protocol::encodeSecurePacket(source, key, wire), "secure packet encode failed");
     require(!protocol::decodeSecurePacket(wire.data(), wire.size() - 1, key, decoded),
             "truncated secure packet accepted");
-    auto tampered = wire; tampered.back() ^= 1;
+    require(!wire.empty(), "encoded secure packet is unexpectedly empty");
+    auto tampered = wire;
+    tampered.at(tampered.size() - 1) ^= 1;
     require(!protocol::decodeSecurePacket(tampered.data(), tampered.size(), key, decoded),
             "modified authentication tag accepted");
     tampered = wire; tampered[protocol::HEADER_SIZE + 1] ^= 1;
