@@ -1,112 +1,100 @@
 #pragma once
 
-#include <string>
-#include <queue>
-#include <mutex>
-#include <thread>
+#include "../platform/socket_compat.h"
+#include "../protocol/message_payloads.h"
+#include "../protocol/secure_payload.h"
+#include "../protocol/file_messages.h"
+#include "file_sender.h"
+#include "file_receiver.h"
+
+#include <nlohmann/json.hpp>
 #include <atomic>
-#include <optional>
-#include <vector>
-#include <condition_variable>
-#include <unordered_map>
 #include <chrono>
+#include <condition_variable>
+#include <deque>
 #include <filesystem>
+#include <map>
+#include <memory>
+#include <mutex>
+#include <string>
+#include <thread>
+#include <unordered_map>
+#include <vector>
 
-#include "../protocol/message.h"
-#include "connection.h"
-#include "file_transfer.h"
-
-struct ClientEvent {
+struct AgentEvent {
     std::string type;
     nlohmann::json data;
 };
 
-class ChatClient {
-private:
-    Connection connection;
-
-    std::string username;
-
-    std::atomic<bool> authenticated;
-    std::atomic<bool> running;
-
-    std::thread receiverThread;
-
-    std::queue<ClientEvent> eventQueue;
-    std::mutex eventQueueMutex;
-
-    std::mutex loginMutex;
-    std::vector<std::string> latestUserList;
-    mutable std::mutex userListMutex;
-    FileTransfer fileTransfer;
-    std::mutex fileResponseMutex;
-    std::condition_variable fileResponseChanged;
-    std::unordered_map<std::uint32_t, Message> fileResponses;
-
-    std::optional<Message> waitForFileResponse(
-        std::uint32_t transferId,
-        std::chrono::milliseconds timeout
-    );
-
+class DcapClient {
 public:
-    ChatClient(
-        const std::string& serverAddress,
-        std::uint16_t serverPort
-    ) : connection(serverAddress, serverPort),
-        authenticated(false),
-        running(false) {}
-
-    ~ChatClient();
+    DcapClient(std::string server_address, std::uint16_t server_port = 54000,
+               std::uint16_t udp_port = 54001);
+    ~DcapClient();
 
     bool connect();
-
-    bool login(
-        const std::string& username,
-        const std::string& password
-    );
-
+    bool login(const std::string& username);
     void logout();
-
-    bool sendGlobalMessage(const std::string& content);
-
-    bool sendPrivateMessage(
-        const std::string& recipient,
-        const std::string& content
-    );
-
-    bool sendFile(
-        const std::string& recipient,
-        const std::filesystem::path& filePath,
-        const sockaddr_in& recipientAddress
-    );
-
-    bool sendFile(
-        const std::string& recipient,
-        const std::filesystem::path& filePath
-    );
-
-    bool respondToFileOffer(
-        std::uint32_t transferId,
-        bool accept
-    );
-
-    void receiveLoop();
-
-    std::optional<ClientEvent> getNextEvent();
-
     void disconnect();
 
-    bool isAuthenticated() const {
-        return this->authenticated.load();
-    }
+    bool connected() const { return connected_.load(); }
+    bool authenticated() const { return authenticated_.load(); }
+    std::string username() const;
+    std::vector<std::string> users() const;
 
-    bool isConnected() const {
-        return connection.isConnected();
-    }
+    bool sendGlobal(const std::string& text);
+    bool sendPrivate(const std::string& recipient, const std::string& text);
+    std::string sendFile(const std::string& recipient, const std::filesystem::path& path);
+    bool decideFile(const std::string& transfer_id_hex, bool accept);
 
-    std::string getUsername() const {
-        return this->username;
-    }
+    std::vector<AgentEvent> takeEvents();
+    std::string lastError() const;
 
-    std::vector<std::string> getLatestUserList() const;
+private:
+    bool sendTcp(protocol::Packet packet);
+    bool sendUdp(protocol::Packet packet);
+    void tcpLoop();
+    void udpLoop();
+    void maintenanceLoop();
+    void handleTcp(const protocol::Packet& packet);
+    void handleUdp(const protocol::Packet& packet);
+    void emit(std::string type, nlohmann::json data = nlohmann::json::object());
+    static std::string timestamp(std::uint64_t milliseconds);
+
+    std::string server_address_;
+    std::uint16_t server_port_;
+    std::uint16_t udp_port_;
+    sockaddr_in server_udp_{};
+    protocol::EncryptionKey encryption_key_{};
+
+    SocketHandle tcp_socket_ = INVALID_SOCKET_HANDLE;
+    SocketHandle udp_socket_ = INVALID_SOCKET_HANDLE;
+    std::atomic<bool> connected_{false};
+    std::atomic<bool> authenticated_{false};
+    std::atomic<bool> running_{false};
+    std::atomic<bool> udp_registered_{false};
+    std::atomic<bool> socket_runtime_initialized_{false};
+
+    mutable std::mutex state_mutex_;
+    std::string username_;
+    std::string last_error_;
+    std::vector<std::string> users_;
+    std::array<std::uint8_t,32> udp_token_{};
+
+    protocol::SequenceCounter tcp_sequence_;
+    protocol::SequenceCounter udp_sequence_;
+    std::mutex tcp_send_mutex_;
+    std::mutex udp_send_mutex_;
+    std::thread tcp_thread_;
+    std::thread udp_thread_;
+    std::thread maintenance_thread_;
+
+    std::mutex events_mutex_;
+    std::deque<AgentEvent> events_;
+
+    std::mutex transfers_mutex_;
+    std::unordered_map<std::string,std::unique_ptr<filetransfer::FileSender>> senders_;
+    std::unordered_map<std::uint32_t,std::string> pending_file_offers_;
+    std::unordered_map<std::string,fileproto::Offer> incoming_offers_;
+    std::unordered_map<std::string,std::unique_ptr<filetransfer::FileReceiver>> receivers_;
 };

@@ -25,13 +25,12 @@ This shared-key setup does not provide per-user keys, password authentication, a
 - `server/`: TCP sessions, authentication/session management, UDP service, and file relay.
 - `protocol/`: DCAP packet framing, payload codecs, file-transfer messages, and secure-payload helpers.
 - `platform/`: Windows/POSIX socket compatibility.
-- `clients/dcap_client.*`: DCAP TCP/UDP client, session registration, chat, and file-transfer coordination.
-- `clients/dcap_http_bridge.*`: local HTTP bridge for the browser UI.
+- `clients/client.*`: DCAP TCP/UDP client, session registration, chat, and file-transfer coordination.
+- `clients/http_bridge.*`: local HTTP bridge for the browser UI.
 - `clients/file_sender.*`, `clients/file_receiver.*`: UDP file-transfer state machines.
 - `clients/client_agent_main.cpp`: starts the local Client Agent.
 - `web/`: HTML/CSS/JS interface retained and connected to the DCAP HTTP bridge.
-- `clients/client.*`, `clients/connection.*`, `clients/http_bridge.*`, and `protocol/message.*`: legacy JSON implementation retained for reference; not used by the DCAP targets.
-- `tests/`: previous JSON-protocol tests retained for reference, plus `dcap_security_tests` for AES-256-GCM round-trip and tamper rejection.
+- `tests/`: DCAP protocol, client/server integration, file-transfer, security, and HTTP/web tests.
 
 ## Build requirements
 
@@ -81,6 +80,6 @@ Choose an online recipient in the UI and upload a file. The bridge stages the fi
 
 ## Integration status
 
-The DCAP server, client agent, HTTP bridge, browser login/chat/user-list flow, and file-offer UI are now connected in source. The old JSON client and bridge remain in the repository but are excluded from the DCAP build targets.
+The DCAP server, client agent, HTTP bridge, browser login/chat/user-list flow, and file-offer UI are now connected in source. The unused legacy client, connection, file-transfer, and HTTP bridge implementations have been removed; the active DCAP implementation now lives in the standard `client.*` and `http_bridge.*` files.
 
 **Build and tests have intentionally not been run yet**, as requested. Compilation, runtime behavior, and end-to-end file delivery are therefore not verified. Dedicated DCAP protocol, client/server integration, and file-transfer tests are still needed before considering the integration complete.

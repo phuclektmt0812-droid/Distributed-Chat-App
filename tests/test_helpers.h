@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../clients/dcap_client.h"
+#include "../clients/client.h"
 #include "../server/server.h"
 
 #include <algorithm>

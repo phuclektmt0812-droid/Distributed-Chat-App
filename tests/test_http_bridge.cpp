@@ -1,5 +1,5 @@
 #include "test_helpers.h"
-#include "../clients/dcap_http_bridge.h"
+#include "../clients/http_bridge.h"
 #include "../platform/socket_compat.h"
 #include <array>
 #include <iostream>

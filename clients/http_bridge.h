@@ -1,103 +1,33 @@
 #pragma once
-
-#include <winsock2.h>
-#include <string>
-#include <thread>
+#include "client.h
+#include "../platform/socket_compat.h"
 #include <atomic>
-#include <vector>
 #include <mutex>
-#include <memory>
-#include <deque>
-#include <stdexcept>
-using namespace std;
+#include <thread>
+#include <vector>
 
-#include "../clients/client.h"
-
-class HttpBridge {
-private:
-    std::atomic<SOCKET> listeningSocket;
-
-    uint16_t httpPort;
-
-    atomic<bool> running;
-
-    ChatClient chatClient;
-    string serverAddress;
-    uint16_t serverPort;
-
-    mutex sessionMutex;
-    bool sessionAuthenticated;
-    string sessionUsername;
-    string lastConnectionError;
-    nlohmann::json latestUserList = nlohmann::json::array();
-    deque<ClientEvent> pendingEvents;
-    bool winsockInitialized;
-
-    thread acceptThread;
-
-    vector<thread> httpWorkerThreads;
-
-    mutex workersMutex;
-
+class DcapHttpBridge {
 public:
-    HttpBridge(
-        const string& serverAddress,
-        uint16_t serverPort,
-        uint16_t httpPort
-    );
-
-    ~HttpBridge();
-
+    DcapHttpBridge(const std::string& serverAddress, std::uint16_t serverPort = 54000,
+                   std::uint16_t httpPort = 8080);
+    ~DcapHttpBridge();
     bool start();
-
-    void acceptHttpConnections();
-
-    void handleHttpConnection(SOCKET clientSocket);
-
-    void handleHttpRequest(
-        SOCKET clientSocket,
-        const string& request
-    );
-
-    void handleLogin(
-        SOCKET clientSocket,
-        const string& requestBody
-    );
-
-    void handleLogout(SOCKET clientSocket);
-
-    void handleGlobalMessage(
-        SOCKET clientSocket,
-        const string& requestBody
-    );
-
-    void handlePrivateMessage(
-        SOCKET clientSocket,
-        const string& requestBody
-    );
-
-    void handleUserListRequest(SOCKET clientSocket);
-
-    void handleEventsRequest(SOCKET clientSocket);
-
-    void handleStatusRequest(SOCKET clientSocket);
-
-    void handleFileUpload(
-        SOCKET clientSocket,
-        const string& requestBody
-    );
-
-    void handleFileDownload(
-        SOCKET clientSocket,
-        const string& transferId
-    );
-
-    void sendHttpResponse(
-        SOCKET clientSocket,
-        int statusCode,
-        const string& contentType,
-        const string& body
-    );
-
     void stop();
+
+private:
+    void acceptLoop();
+    void handleConnection(SocketHandle socket);
+    void respond(SocketHandle socket, int status, const std::string& contentType,
+                 const std::string& body, const std::string& origin = "");
+    DcapClient client_;
+    std::uint16_t server_port_;
+    std::uint16_t http_port_;
+    SocketHandle listener_ = INVALID_SOCKET_HANDLE;
+    std::atomic<bool> running_{false};
+    std::thread accept_thread_;
+    std::mutex workers_mutex_;
+    std::vector<std::thread> workers_;
+    std::mutex session_mutex_;
+    std::mutex events_mutex_;
+    std::vector<AgentEvent> pending_events_;
 };

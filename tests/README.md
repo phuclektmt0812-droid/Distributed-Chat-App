@@ -65,16 +65,11 @@ The active DCAP v1 build targets are defined by \`CMakeLists.txt\` and
 \`DcapHttpBridge\`, protocol codecs and transport helpers, socket compatibility
 layer, file sender, file receiver, and file relay.
 
-The repository also retains an older, separate length-prefixed JSON / direct
-UDP implementation. Files such as `clients/client.cpp`,
-`clients/connection.cpp`, `clients/file_transfer.cpp`,
-`clients/http_bridge.cpp`, `server/client_session.cpp`, and
-`server/message_router.cpp` are not part of the current CMake/Makefile build.
-Their API/model differs from the active DCAP v1 server and client, so they are
-outside the scope of this active-application test suite. The unused legacy
-codec-only test files have been removed rather than counted as coverage for
-the current DCAP v1 application. Integrating or removing the remaining legacy
-classes is a separate source-code decision.
+The repository still contains older server-side JSON/direct-UDP modules such as
+`server/client_session.cpp` and `server/message_router.cpp`, plus their legacy
+protocol codecs. They are not part of the current CMake/Makefile build and are
+outside the scope of this DCAP v1 test suite. The duplicate legacy client,
+connection, file-transfer, and HTTP bridge implementations have been removed.
 
 ## Known coverage gaps / manual or future tests
 
@@ -93,7 +88,7 @@ classes is a separate source-code decision.
 - OS-level socket timeout behavior and TCP keepalive timing vary by platform;
   the socket test checks option configuration and loopback I/O, not real
   dead-peer detection over a long network outage.
-- The retained legacy client/server classes are not integrated into current
+- The retained legacy server-side classes are not integrated into current
   build targets and therefore cannot be claimed as covered application paths.
 - The UDP heartbeat-expiry test includes a clock-rollback boundary. Static
   inspection suggests the current unsigned timestamp subtraction may underflow

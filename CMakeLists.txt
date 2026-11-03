@@ -48,8 +48,8 @@ target_link_libraries(client_file_transfer PUBLIC chat_protocol)
 
 add_executable(client_agent
     clients/client_agent_main.cpp
-    clients/dcap_client.cpp
-    clients/dcap_http_bridge.cpp
+    clients/client.cpp
+    clients/http_bridge.cpp
 )
 target_include_directories(client_agent PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(client_agent PRIVATE client_file_transfer chat_protocol nlohmann_json::nlohmann_json)
@@ -61,8 +61,8 @@ add_library(dcap_test_support STATIC
     server/tcp_session.cpp
     server/udp_service.cpp
     server/file_relay.cpp
-    clients/dcap_client.cpp
-    clients/dcap_http_bridge.cpp
+    clients/client.cpp
+    clients/http_bridge.cpp
 )
 target_include_directories(dcap_test_support PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(dcap_test_support
