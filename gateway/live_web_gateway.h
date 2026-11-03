@@ -16,7 +16,8 @@
 class LiveWebGateway {
 public:
     LiveWebGateway(std::string serverAddress, std::uint16_t serverPort,
-                   std::uint16_t httpPort, std::filesystem::path webRoot);
+                   std::uint16_t httpPort, std::filesystem::path webRoot,
+                   std::string bindAddress = "127.0.0.1");
     ~LiveWebGateway();
 
     bool start();
@@ -35,6 +36,7 @@ private:
     std::uint16_t server_port_;
     std::uint16_t http_port_;
     std::filesystem::path web_root_;
+    std::string bind_address_;
 
     SocketHandle listener_ = INVALID_SOCKET_HANDLE;
     std::atomic<bool> running_{false};
