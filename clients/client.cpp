@@ -189,10 +189,15 @@ bool DcapClient::sendPrivate(const std::string& recipient, const std::string& te
     return sendTcp(std::move(packet));
 }
 
-std::string DcapClient::sendFile(const std::string& recipient, const std::filesystem::path& path) {
+std::string DcapClient::sendFile(const std::string& recipient, const std::filesystem::path& path,
+                                  const std::string& displayFilename) {
     if (!authenticated_ || recipient.empty()) return {};
     try {
-        auto sender = std::make_unique<filetransfer::FileSender>(path.string(), recipient, udp_sequence_);
+        const auto offeredFilename = displayFilename.empty()
+            ? path.filename().u8string()
+            : displayFilename;
+        auto sender = std::make_unique<filetransfer::FileSender>(
+            path.string(), recipient, udp_sequence_, offeredFilename);
         const auto id = fileproto::idHex(sender->offer().id);
         auto offer = sender->makeOffer(0);
         offer.sequence = tcp_sequence_.next();
@@ -209,7 +214,7 @@ std::string DcapClient::sendFile(const std::string& recipient, const std::filesy
             pending_file_offers_.erase(offerSequence);
             return {};
         }
-        emit("FILE_PROGRESS", {{"transferId", id}, {"filename", path.filename().string()},
+        emit("FILE_PROGRESS", {{"transferId", id}, {"filename", offeredFilename},
                                {"progress", 0}, {"status", "Waiting for recipient"}});
         return id;
     } catch (const std::exception& error) {
