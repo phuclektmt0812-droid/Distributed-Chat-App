@@ -56,6 +56,7 @@ public:
     std::vector<std::shared_ptr<ClientSession>> expiredUdp(std::uint64_t nowMs);
     std::uint32_t revision() const;
     std::size_t accountCount() const;
+    bool initializeAccountStore();
 
 private:
     struct AccountNode {
