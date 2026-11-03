@@ -44,7 +44,7 @@ void testSenderReceiverRoundTrip() {
         protocol::SequenceCounter senderSequence;
         protocol::SequenceCounter receiverSequence;
         const std::string displayFilename =
-            "L\\xC3\\xAA Ho\\xC3\\xA0ng Ph\\xC3\\xBAc Lab6Report.pdf";
+            u8"Lê Hoàng Phúc Lab6Report.pdf";
         filetransfer::FileSender sender(
             sourcePath.string(), "receiver", senderSequence, displayFilename);
         require(sender.offer().filename == displayFilename,
