@@ -18,7 +18,7 @@ The browser does not connect directly to the Server's TCP or UDP sockets. It com
 - Global messages and private messages.
 - Online-user list and client/server connection status.
 - UDP endpoint registration, heartbeat, and discovery.
-- File offers and accept/reject decisions over TCP.
+- File offers and automatic recipient acceptance over TCP.
 - File data relayed through the Server over UDP, with chunking, acknowledgements, retransmission, and SHA-256 integrity verification.
 - AES-256-GCM authenticated encryption for DCAP TCP and UDP packet payloads.
 - Cross-platform socket compatibility layer for Windows, Linux, and macOS.
