@@ -1,5 +1,5 @@
 #pragma once
-#include "client.h
+#include "client.h"
 #include "../platform/socket_compat.h"
 #include <atomic>
 #include <mutex>

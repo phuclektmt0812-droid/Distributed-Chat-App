@@ -1,4 +1,4 @@
-#include "client.h
+#include "client.h"
 
 #include "../protocol/packet.h"
 #include "../protocol/protocol.h"

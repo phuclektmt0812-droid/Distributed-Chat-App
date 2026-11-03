@@ -1,4 +1,4 @@
-#include "http_bridge.h
+#include "http_bridge.h"
 #include "../protocol/packet.h"
 #include <nlohmann/json.hpp>
 #include <algorithm>
