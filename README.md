@@ -39,7 +39,8 @@ This shared-key setup does not provide per-user keys, password authentication, a
 - OpenSSL Crypto development package
 - Threads
 - nlohmann/json headers
-- On Windows, a GNU-compatible environment such as MSYS2/MinGW-w64 with the Windows socket library
+- On Windows, GNU Make plus a GCC-compatible toolchain (MSYS2/MinGW-w64 or MinGW-w64 GCC), OpenSSL, and the Windows socket library.
+- On macOS, Xcode Command Line Tools (or another Clang/GCC toolchain) and OpenSSL (for example, installed with Homebrew).
 
 CMake 3.20+ is optional; GNU Make can build the application and test programs without CMake.
 
