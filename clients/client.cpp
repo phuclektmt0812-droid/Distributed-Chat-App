@@ -145,12 +145,24 @@ bool DcapClient::connect() {
     return true;
 }
 
-bool DcapClient::login(const std::string& name) {
+bool DcapClient::registerAccount(const std::string& name,
+                                  const std::string& password) {
     if (!connected_ || name.empty() || name.size() > protocol::MAX_USERNAME_BYTES ||
-        !protocol::validUtf8(name)) return false;
+        !protocol::validUtf8(name) || password.empty() || password.size() > 128 ||
+        !protocol::validUtf8(password)) return false;
+    protocol::Packet packet;
+    packet.type = protocol::Type::SIGN_UP;
+    if (!messages::encode(messages::SignUp{name,password}, packet.payload)) return false;
+    return sendTcp(std::move(packet));
+}
+
+bool DcapClient::login(const std::string& name, const std::string& password) {
+    if (!connected_ || name.empty() || name.size() > protocol::MAX_USERNAME_BYTES ||
+        !protocol::validUtf8(name) || password.empty() || password.size() > 128 ||
+        !protocol::validUtf8(password)) return false;
     protocol::Packet packet;
     packet.type = protocol::Type::AUTH;
-    if (!messages::encode(messages::Auth{name}, packet.payload)) return false;
+    if (!messages::encode(messages::Auth{name,password}, packet.payload)) return false;
     {
         std::lock_guard<std::mutex> lock(state_mutex_);
         username_ = name;
@@ -367,6 +379,14 @@ void DcapClient::handleTcp(const protocol::Packet& packet) {
         authenticated_ = false;
         { std::lock_guard<std::mutex> lock(state_mutex_); username_.clear(); }
         emit("LOGIN_FAIL", {{"error", data.reason}, {"code", data.code}});
+        break;
+    }
+    case protocol::Type::SIGN_UP_OK:
+    case protocol::Type::SIGN_UP_FAIL: {
+        messages::AuthFail data;
+        if (!messages::decode(packet.payload, data)) break;
+        emit(packet.type == protocol::Type::SIGN_UP_OK ? "SIGNUP_OK" : "SIGNUP_FAIL",
+             {{"error", data.reason}, {"code", data.code}});
         break;
     }
     case protocol::Type::SESSION_INFO: {
