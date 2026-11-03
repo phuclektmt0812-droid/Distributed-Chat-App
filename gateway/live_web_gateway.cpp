@@ -206,7 +206,7 @@ std::string safeFilename(std::string name) {
     if (name.empty() || name == "." || name == "..") return "upload.bin";
     for (char& c : name) {
         const auto byte = static_cast<unsigned char>(c);
-        if (byte < 32 || c == ':' || c == '/' || c == '\\') c = '_';
+        if (byte < 32 || c == ':' || c == '/' || c == '\\' || c == '"') c = '_';
     }
     if (name.size() > 255) name.resize(255);
     return name;
@@ -296,6 +296,19 @@ std::string cookieValue(const std::string& cookies, const std::string& name) {
     return {};
 }
 
+std::string queryValue(const std::string& target, const std::string& name) {
+    const auto question = target.find('?');
+    if (question == std::string::npos) return {};
+    std::istringstream stream(target.substr(question + 1));
+    std::string item;
+    while (std::getline(stream, item, '&')) {
+        const auto equals = item.find('=');
+        if (equals != std::string::npos && item.substr(0, equals) == name)
+            return item.substr(equals + 1);
+    }
+    return {};
+}
+
 bool sameOrigin(const HttpRequest& request) {
     const auto origin = request.header("origin");
     if (origin.empty()) return true; // Non-browser clients may omit Origin.
@@ -315,12 +328,18 @@ std::string jsonText(const json& value) {
 } // namespace
 
 struct LiveWebGateway::Session {
-    explicit Session(std::string address, std::uint16_t port)
-        : client(std::make_unique<DcapClient>(std::move(address), port)) {}
+    Session(std::string address, std::uint16_t port,
+            std::filesystem::path receivedFilesDirectory)
+        : client(std::make_unique<DcapClient>(std::move(address), port, protocol::UDP_PORT,
+                                              receivedFilesDirectory)),
+          received_files_directory(std::move(receivedFilesDirectory)) {}
 
     std::unique_ptr<DcapClient> client;
+    std::filesystem::path received_files_directory;
     std::mutex pending_mutex;
     std::deque<AgentEvent> pending_events;
+    std::mutex completed_files_mutex;
+    std::unordered_map<std::string, std::string> completed_files;
     std::atomic<std::uint64_t> last_activity_ms{nowMs()};
 };
 
@@ -531,42 +550,47 @@ void LiveWebGateway::handleConnection(SocketHandle socket) {
                             }
                         }
                         if (status == 200) {
-                            auto session = std::make_shared<Session>(server_address_, server_port_);
-                            if (!session->client->connect()) {
-                                status = 503;
-                                response = {{"error", session->client->lastError()}};
-                            } else if (!session->client->login(username)) {
-                                status = 400;
-                                response = {{"error", "Could not send login request"}};
-                                session->client->disconnect();
-                            } else {
-                                bool authenticated = false;
-                                bool rejected = false;
-                                std::string rejectionReason;
-                                const auto deadline = std::chrono::steady_clock::now() +
-                                                      std::chrono::seconds(8);
-                                while (std::chrono::steady_clock::now() < deadline &&
-                                       !authenticated && !rejected) {
-                                    for (auto& event : session->client->takeEvents()) {
-                                        if (event.type == "LOGIN_OK") {
-                                            authenticated = true;
-                                        } else if (event.type == "LOGIN_FAIL") {
-                                            rejected = true;
-                                            rejectionReason = event.data.value(
-                                                "error", std::string("Login rejected"));
-                                        } else {
-                                            std::lock_guard<std::mutex> eventLock(
-                                                session->pending_mutex);
-                                            session->pending_events.push_back(std::move(event));
-                                        }
-                                    }
-                                    if (!authenticated && !rejected)
-                                        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-                                }
+                            try {
+                                const auto newToken = randomToken();
+                                const auto receiveDirectory = std::filesystem::current_path() /
+                                    "received_files" / "live-web" / newToken;
+                                std::filesystem::create_directories(receiveDirectory);
+                                auto session = std::make_shared<Session>(
+                                    server_address_, server_port_, receiveDirectory);
 
-                                if (authenticated) {
-                                    try {
-                                        const auto newToken = randomToken();
+                                if (!session->client->connect()) {
+                                    status = 503;
+                                    response = {{"error", session->client->lastError()}};
+                                } else if (!session->client->login(username)) {
+                                    status = 400;
+                                    response = {{"error", "Could not send login request"}};
+                                    session->client->disconnect();
+                                } else {
+                                    bool authenticated = false;
+                                    bool rejected = false;
+                                    std::string rejectionReason;
+                                    const auto deadline = std::chrono::steady_clock::now() +
+                                                          std::chrono::seconds(8);
+                                    while (std::chrono::steady_clock::now() < deadline &&
+                                           !authenticated && !rejected) {
+                                        for (auto& event : session->client->takeEvents()) {
+                                            if (event.type == "LOGIN_OK") {
+                                                authenticated = true;
+                                            } else if (event.type == "LOGIN_FAIL") {
+                                                rejected = true;
+                                                rejectionReason = event.data.value(
+                                                    "error", std::string("Login rejected"));
+                                            } else {
+                                                std::lock_guard<std::mutex> eventLock(
+                                                    session->pending_mutex);
+                                                session->pending_events.push_back(std::move(event));
+                                            }
+                                        }
+                                        if (!authenticated && !rejected)
+                                            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                                    }
+
+                                    if (authenticated) {
                                         {
                                             std::lock_guard<std::mutex> lock(sessions_mutex_);
                                             if (sessions_.size() >= MAX_ACTIVE_SESSIONS) {
@@ -584,17 +608,16 @@ void LiveWebGateway::handleConnection(SocketHandle socket) {
                                             }
                                         }
                                         if (status != 200) session->client->logout();
-                                    } catch (const std::exception& error) {
-                                        status = 500;
-                                        response = {{"error", error.what()}};
-                                        session->client->logout();
+                                    } else {
+                                        status = rejected ? 401 : 504;
+                                        response = {{"error", rejected ? rejectionReason :
+                                            "Timed out waiting for server authentication"}};
+                                        session->client->disconnect();
                                     }
-                                } else {
-                                    status = rejected ? 401 : 504;
-                                    response = {{"error", rejected ? rejectionReason :
-                                        "Timed out waiting for server authentication"}};
-                                    session->client->disconnect();
                                 }
+                            } catch (const std::exception& error) {
+                                status = 500;
+                                response = {{"error", error.what()}};
                             }
                         }
                     }
@@ -645,8 +668,24 @@ void LiveWebGateway::handleConnection(SocketHandle socket) {
                             events.push_back({{"type", event.type}, {"data", event.data}});
                         session->pending_events.clear();
                     }
-                    for (auto& event : session->client->takeEvents())
+                    for (auto& event : session->client->takeEvents()) {
+                        if (event.type == "FILE_COMPLETE") {
+                            const auto transferId = event.data.value(
+                                "transferId", event.data.value("transfer_id", std::string()));
+                            const auto filename = safeFilename(
+                                event.data.value("filename", std::string()));
+                            if (transferId.size() == 32 && !filename.empty() &&
+                                std::filesystem::exists(session->received_files_directory / filename)) {
+                                {
+                                    std::lock_guard<std::mutex> fileLock(session->completed_files_mutex);
+                                    session->completed_files[transferId] = filename;
+                                }
+                                event.data["download_url"] =
+                                    "/file_download?transfer_id=" + transferId;
+                            }
+                        }
                         events.push_back({{"type", event.type}, {"data", event.data}});
+                    }
                     status = 200;
                     response = {{"events", events}};
                 } else if (request.method == "POST" &&
@@ -667,6 +706,41 @@ void LiveWebGateway::handleConnection(SocketHandle socket) {
                         status = sent ? 202 : 422;
                         response = sent ? json{{"status", "accepted"}} :
                             json{{"error", "Invalid message or recipient"}};
+                    }
+                } else if (request.method == "GET" && path == "/file_download") {
+                    if (!session->client->authenticated()) {
+                        status = 401;
+                        response = {{"error", "Authentication required"}};
+                    } else {
+                        const auto transferId = queryValue(request.target, "transfer_id");
+                        std::string filename;
+                        if (transferId.size() == 32 &&
+                            std::all_of(transferId.begin(), transferId.end(), [](unsigned char c) {
+                                return std::isxdigit(c) != 0;
+                            })) {
+                            std::lock_guard<std::mutex> fileLock(session->completed_files_mutex);
+                            const auto found = session->completed_files.find(transferId);
+                            if (found != session->completed_files.end()) filename = found->second;
+                        }
+                        if (filename.empty()) {
+                            status = 404;
+                            response = {{"error", "Completed file not found for this session"}};
+                        } else {
+                            const auto filePath = session->received_files_directory / safeFilename(filename);
+                            std::ifstream input(filePath, std::ios::binary);
+                            if (!input) {
+                                status = 404;
+                                response = {{"error", "Received file is no longer available"}};
+                            } else {
+                                body.assign(std::istreambuf_iterator<char>(input),
+                                            std::istreambuf_iterator<char>());
+                                contentType = "application/octet-stream";
+                                extraHeaders += "Content-Disposition: attachment; filename=\"" +
+                                    safeFilename(filename) + "\"\r\n";
+                                status = 200;
+                                rawBody = true;
+                            }
+                        }
                     }
                 } else if (request.method == "POST" && path == "/file_decision") {
                     json data;
