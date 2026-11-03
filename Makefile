@@ -127,5 +127,10 @@ test: tests
 
 check: test
 
+# Build and run one test, e.g. make run-dcap_login_tests.
+.PHONY: run-%
+run-%: $(TEST_BUILD_DIR)/%$(EXEEXT)
+	@./$<
+
 clean:
 	rm -rf $(BUILD_DIR) server_app$(EXEEXT) client_agent$(EXEEXT)
