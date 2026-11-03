@@ -60,7 +60,8 @@ void testIntegerAndStringHelpers() {
     protocol::Bytes truncated{0, 5, 'a'};
     offset = 0;
     require(!protocol::getString(truncated, offset, decoded), "truncated protocol string accepted");
-    require(!protocol::getString(text, text.size() + 1, decoded),
+    std::size_t invalidOffset = text.size() + 1;
+    require(!protocol::getString(text, invalidOffset, decoded),
             "string offset beyond buffer accepted");
 }
 void testPlainAndSecureTcp() {
