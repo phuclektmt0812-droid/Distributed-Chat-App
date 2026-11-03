@@ -347,9 +347,11 @@ struct LiveWebGateway::Session {
 };
 
 LiveWebGateway::LiveWebGateway(std::string serverAddress, std::uint16_t serverPort,
-                               std::uint16_t httpPort, std::filesystem::path webRoot)
+                               std::uint16_t httpPort, std::filesystem::path webRoot,
+                               std::string bindAddress)
     : server_address_(std::move(serverAddress)), server_port_(serverPort),
-      http_port_(httpPort), web_root_(std::move(webRoot)) {}
+      http_port_(httpPort), web_root_(std::move(webRoot)),
+      bind_address_(std::move(bindAddress)) {}
 
 LiveWebGateway::~LiveWebGateway() {
     stop();
@@ -357,7 +359,8 @@ LiveWebGateway::~LiveWebGateway() {
 
 bool LiveWebGateway::start() {
     if (running_) return true;
-    if (http_port_ == 0 || server_port_ == 0 || server_address_.empty()) return false;
+    if (http_port_ == 0 || server_port_ == 0 || server_address_.empty() ||
+        bind_address_.empty()) return false;
     if (!std::filesystem::exists(web_root_ / "index.html") ||
         !std::filesystem::exists(web_root_ / "app.js") ||
         !std::filesystem::exists(web_root_ / "style.css")) {
@@ -375,9 +378,21 @@ bool LiveWebGateway::start() {
     setReuseAddress(listener_);
     setSocketTimeout(listener_, 500, 0);
 
+    in_addr bindAddress{};
+#ifdef _WIN32
+    const int addressParsed = InetPtonA(AF_INET, bind_address_.c_str(), &bindAddress);
+#else
+    const int addressParsed = inet_pton(AF_INET, bind_address_.c_str(), &bindAddress);
+#endif
+    if (addressParsed != 1) {
+        std::cerr << "[GATEWAY] Invalid IPv4 bind address: " << bind_address_ << std::endl;
+        stop();
+        return false;
+    }
+
     sockaddr_in local{};
     local.sin_family = AF_INET;
-    local.sin_addr.s_addr = htonl(INADDR_ANY);
+    local.sin_addr = bindAddress;
     local.sin_port = htons(http_port_);
     if (::bind(listener_, reinterpret_cast<sockaddr*>(&local), sizeof(local)) != 0 ||
         ::listen(listener_, SOMAXCONN) != 0) {
@@ -388,7 +403,7 @@ bool LiveWebGateway::start() {
 
     running_ = true;
     accept_thread_ = std::thread(&LiveWebGateway::acceptLoop, this);
-    std::cout << "[GATEWAY] Listening on 0.0.0.0:" << http_port_
+    std::cout << "[GATEWAY] Listening on " << bind_address_ << ":" << http_port_
               << " and forwarding DCAP sessions to "
               << server_address_ << ":" << server_port_ << std::endl;
     return true;
