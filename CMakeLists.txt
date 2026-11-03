@@ -54,6 +54,14 @@ add_executable(client_agent
 target_include_directories(client_agent PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(client_agent PRIVATE client_file_transfer chat_protocol nlohmann_json::nlohmann_json)
 
+add_executable(live_web_gateway
+    gateway/live_web_gateway_main.cpp
+    gateway/live_web_gateway.cpp
+    clients/client.cpp
+)
+target_include_directories(live_web_gateway PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+target_link_libraries(live_web_gateway PRIVATE client_file_transfer chat_protocol nlohmann_json::nlohmann_json)
+
 # Shared current-protocol server/client/HTTP implementation for integration tests.
 add_library(dcap_test_support STATIC
     server/server.cpp
@@ -167,12 +175,20 @@ add_executable(dcap_http_bridge_tests tests/test_http_bridge.cpp)
 target_link_libraries(dcap_http_bridge_tests PRIVATE dcap_test_support)
 add_test(NAME dcap_http_bridge_tests COMMAND dcap_http_bridge_tests)
 
+add_executable(dcap_live_web_gateway_tests
+    tests/test_live_web_gateway.cpp
+    gateway/live_web_gateway.cpp
+)
+target_link_libraries(dcap_live_web_gateway_tests PRIVATE dcap_test_support)
+add_test(NAME dcap_live_web_gateway_tests COMMAND dcap_live_web_gateway_tests)
+
 add_executable(dcap_web_asset_tests tests/test_web_assets.cpp)
 add_test(NAME dcap_web_asset_tests COMMAND dcap_web_asset_tests)
 
 set_tests_properties(
     dcap_web_asset_tests
     dcap_http_bridge_tests
+    dcap_live_web_gateway_tests
     PROPERTIES WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
 )
 
@@ -189,5 +205,6 @@ set_tests_properties(
     dcap_file_transfer_integration_tests
     dcap_file_relay_tests
     dcap_http_bridge_tests
+    dcap_live_web_gateway_tests
     PROPERTIES RUN_SERIAL TRUE
 )

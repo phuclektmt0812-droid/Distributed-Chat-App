@@ -1,5 +1,5 @@
 #include "http_bridge.h"
-#include "../protocol/packet.h"
+#include "../protocol/protocol.h"
 #include <nlohmann/json.hpp>
 #include <algorithm>
 #include <cctype>
@@ -226,23 +226,67 @@ void DcapHttpBridge::handleConnection(SocketHandle socket) {
                 status=200; sendRaw=true;
             }
         }
-        else if(method=="POST" && path=="/login") {
+        else if(method=="POST" && path=="/signup") {
             json data;
-            if(!parseJson(body,data) || !data.contains("username") || !data["username"].is_string()) {
-                status=400; response={{"error","Username is required"}};
+            if(!parseJson(body,data) || !data.contains("username") || !data["username"].is_string() ||
+               !data.contains("password") || !data["password"].is_string()) {
+                status=400; response={{"error","Username and password are required"}};
+            } else {
+                std::lock_guard<std::mutex> lock(session_mutex_);
+                const auto username=data["username"].get<std::string>();
+                const auto password=data["password"].get<std::string>();
+                if(client_.authenticated()) { status=409; response={{"error","Log out before creating another account"}}; }
+                else if(password.size()<8 || password.size()>128) {
+                    status=400; response={{"error","Password must contain 8 to 128 bytes"}};
+                } else if(!client_.connect()) { status=503; response={{"error",client_.lastError()}}; }
+                else if(!client_.registerAccount(username,password)) {
+                    status=400; response={{"error","Invalid sign-up request"}};
+                    client_.disconnect();
+                } else {
+                    bool done=false;
+                    const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(8);
+                    while(std::chrono::steady_clock::now()<deadline && !done) {
+                        for(const auto& event:client_.takeEvents()) {
+                            if(event.type=="SIGNUP_OK") {
+                                status=200; response={{"created",true},{"message","Account created. You can now log in."}};
+                                done=true; break;
+                            }
+                            if(event.type=="SIGNUP_FAIL") {
+                                const auto code=event.data.value("code",0);
+                                status=code==protocol::ERR_ACCOUNT_EXISTS?409:400;
+                                response={{"error",event.data.value("error",std::string("Sign-up rejected"))},{"code",code}};
+                                done=true; break;
+                            }
+                        }
+                        if(!done) std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                    }
+                    if(!done) { status=504; response={{"error","Timed out waiting for account registration"}}; }
+                    client_.disconnect();
+                }
+            }
+        } else if(method=="POST" && path=="/login") {
+            json data;
+            if(!parseJson(body,data) || !data.contains("username") || !data["username"].is_string() ||
+               !data.contains("password") || !data["password"].is_string()) {
+                status=400; response={{"error","Username and password are required"}};
             } else {
                 std::lock_guard<std::mutex> lock(session_mutex_);
                 if(client_.authenticated()) { status=409; response={{"error","Already logged in"}}; }
                 else if(!client_.connect()) { status=503; response={{"error",client_.lastError()}}; }
-                else if(!client_.login(data["username"].get<std::string>())) { status=400; response={{"error","Invalid username or login request"}}; }
-                else {
+                else if(!client_.login(data["username"].get<std::string>(),
+                                       data["password"].get<std::string>())) {
+                    status=400; response={{"error","Invalid login request"}};
+                    client_.disconnect();
+                } else {
                     const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(8);
                     bool done=false;
                     while(std::chrono::steady_clock::now()<deadline && !done) {
                         for(auto& event:client_.takeEvents()) {
                             if(event.type=="LOGIN_OK") { done=true; break; }
                             if(event.type=="LOGIN_FAIL") {
-                                status=401; response={{"error",event.data.value("error",std::string("Login rejected"))}};
+                                const auto code=event.data.value("code",0);
+                                status=code==protocol::ERR_ACCOUNT_ALREADY_ONLINE?409:401;
+                                response={{"error",event.data.value("error",std::string("Login rejected"))},{"code",code}};
                                 done=true; break;
                             }
                             std::lock_guard<std::mutex> q(events_mutex_);
@@ -250,8 +294,12 @@ void DcapHttpBridge::handleConnection(SocketHandle socket) {
                         }
                         if(!done) std::this_thread::sleep_for(std::chrono::milliseconds(10));
                     }
-                    if(status==400 && !done) { status=504; response={{"error","Timed out waiting for authentication"}}; client_.disconnect(); }
-                    else if(status==400) { status=200; response={{"authenticated",true},{"username",client_.username()}}; }
+                    if(status==400 && !done) {
+                        status=504; response={{"error","Timed out waiting for authentication"}};
+                        client_.disconnect();
+                    } else if(status==400) {
+                        status=200; response={{"authenticated",true},{"username",client_.username()}};
+                    }
                 }
             }
         } else if(method=="POST" && path=="/logout") {

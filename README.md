@@ -18,7 +18,7 @@ The browser does not connect directly to the Server's TCP or UDP sockets. It com
 - Global messages and private messages.
 - Online-user list and client/server connection status.
 - UDP endpoint registration, heartbeat, and discovery.
-- File offers and accept/reject decisions over TCP.
+- File offers and automatic recipient acceptance over TCP.
 - File data relayed through the Server over UDP, with chunking, acknowledgements, retransmission, and SHA-256 integrity verification.
 - AES-256-GCM authenticated encryption for DCAP TCP and UDP packet payloads.
 - Cross-platform socket compatibility layer for Windows, Linux, and macOS.
@@ -139,27 +139,29 @@ make
 
 On macOS, use `gmake` instead of `make`.
 
-The default target builds the Server, Client Agent, and all 23 test executables. It does **not** run the tests.
+The default target builds the Server, Client Agent, Public Web Gateway, and all 24 test executables. It does **not** run the tests.
 
 | Command | Action |
 |---|---|
 | `make` | Build Server, Client Agent, and all test executables |
-| `make app` | Build Server and Client Agent only |
+| `make app` | Build Server, Client Agent, and Public Web Gateway |
 | `make server` | Build Server only |
 | `make clients` | Build Client Agent only |
+| `make live-web-gateway` | Build the public browser Gateway only |
 | `make tests` | Build all test executables without running them |
-| `make test` | Build and run all 23 tests sequentially |
+| `make test` | Build and run all 24 tests sequentially; overwrite `test-results.log` |
 | `make dcap_login_tests` | Build one test executable |
 | `make run-dcap_login_tests` | Build and run one test executable |
 | `make test-one TEST=dcap_login_tests` | Alternative command to run one test |
 | `make list-tests` | List available test target names |
-| `make clean` | Remove Make-generated binaries and the `make-build/` directory |
+| `make clean` | Remove Make-generated binaries, the `make-build/` directory, and `test-results.log` |
 
 Replace `dcap_login_tests` with any test target listed by `make list-tests`.
 
 Build outputs:
 
 - `server_app` / `server_app.exe` and `client_agent` / `client_agent.exe` are created in the repository root.
+- The optional public browser Gateway is created as `live_web_gateway` / `live_web_gateway.exe`.
 - Test executables are created under `make-build/tests/`.
 
 ### CMake (optional)
@@ -271,6 +273,18 @@ export DCAP_KEY_FILE="/secure/dcap.key"
 
 On POSIX systems, the key file is created with owner-only permissions (`0600`). Keep the key private and do not commit it. If the key is deleted or replaced, all Server and Client Agent instances must use the same newly generated/copied key. The repository's `.gitignore` excludes the runtime key file.
 
+## Public browser gateway (experimental)
+
+The `live-web` branch adds an optional `live_web_gateway` executable. It serves the browser UI over HTTP and creates an independent DCAP TCP/UDP client session for each browser login, so remote users do not need to run `client_agent` locally.
+
+Build it with:
+
+```bash
+make live-web-gateway
+```
+
+See [Public Web Gateway deployment guide](docs/live-web-deployment.md) for local testing and HTTPS reverse-proxy deployment. The current DCAP protocol still uses username-only authentication; do not expose this prototype to untrusted public users until real user authentication and abuse protections are added.
+
 ## Browser HTTP API
 
 The local HTTP bridge is intended for the browser UI running on the same machine. It serves the static UI and exposes these routes:
@@ -287,7 +301,8 @@ The local HTTP bridge is intended for the browser UI running on the same machine
 | `GET` | `/events` | Poll queued chat/session/file-transfer events |
 | `GET` | `/status` | Get Client Agent connection/authentication status |
 | `POST` | `/file_upload` | Upload a file using multipart form data (`recipient` and `file` fields) |
-| `POST` | `/file_decision` | Accept or reject an incoming file offer |
+| `POST` | `/file_decision` | Legacy manual decision route; the current clients accept incoming files automatically |
+| `GET` | `/file_download` | Download a completed incoming file for the current browser session (public Gateway) |
 
 JSON request examples:
 
@@ -313,8 +328,8 @@ The UI polls the local bridge for events and status; it does not use WebSockets.
 
 1. The sender uploads a file through the browser UI. The Client Agent stages the upload under its working directory's `uploads/` folder.
 2. The sender sends a TCP `FILE_OFFER` to the Server.
-3. The recipient accepts or rejects the offer through the UI.
-4. After acceptance, file data and acknowledgements travel over UDP through the Server relay.
+3. The recipient client automatically prepares the receiver and acknowledges the offer; no user prompt or manual acceptance is required.
+4. File data and acknowledgements then travel over UDP through the Server relay.
 5. The receiver writes the incoming data to a temporary `.part` file, verifies the final size and SHA-256 digest, then renames it to a collision-free filename under `received_files/`.
 
 Current implementation limits include:
@@ -328,7 +343,7 @@ The browser's initial upload progress describes transfer from the browser to its
 
 ## Testing
 
-The repository contains 23 test executables covering packet and message codecs, transport, authentication, chat routing, UDP service, session management, concurrency, file-transfer state machines, server-relay integration, security, and the HTTP bridge.
+The repository contains 24 test executables covering packet and message codecs, transport, authentication, chat routing, UDP service, session management, concurrency, file-transfer state machines, server-relay integration, security, and the HTTP bridge.
 
 Run all tests:
 
@@ -348,8 +363,9 @@ See [tests/README.md](tests/README.md) for the complete test list and coverage d
 
 On Windows with MSYS2 UCRT64 / MinGW-w64 GCC 14.2.0:
 
-- The full `make` build completed successfully.
-- `make test` completed with **23/23 test programs passed**.
+- The full `make` build completed successfully on the earlier 23-test version.
+- `make test` completed with **23/23 test programs passed** on that earlier version.
+- The Live Web Gateway integration test was added afterward; the current 24-test branch has not yet been fully built and run in this editing session.
 
 This is a reported Windows test run, not a claim that CI has tested every operating system. Linux and macOS builds should be run in their respective environments before treating those platforms as verified.
 
@@ -359,6 +375,7 @@ This is a reported Windows test run, not a claim that CI has tested every operat
 - [Protocol specification](docs/protocol-spec.md) — DCAP v1 wire format, message types, and transport rules.
 - [File-transfer specification](docs/file-transfer-spec.md) — UDP file-transfer state machine, reliability, integrity, and limits.
 - [Test documentation](tests/README.md) — test names, coverage, execution, and known test gaps.
+- [Public Web Gateway deployment guide](docs/live-web-deployment.md) — experimental multi-session browser Gateway, local testing, and HTTPS reverse proxy.
 
 ## Security notes and known limitations
 

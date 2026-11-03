@@ -8,6 +8,7 @@
 #include <cstring>
 #include <iostream>
 #include <stdexcept>
+#include <thread>
 
 #ifdef _WIN32
 #include <ws2tcpip.h>
@@ -23,6 +24,7 @@ std::uint64_t nowMs() {
     return static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::system_clock::now().time_since_epoch()).count());
 }
+constexpr auto TCP_PING_INTERVAL = std::chrono::seconds(30);
 std::string idFromPayload(const protocol::Bytes& payload) {
     if (payload.size() < 16) return {};
     fileproto::TransferId id{};
@@ -31,8 +33,12 @@ std::string idFromPayload(const protocol::Bytes& payload) {
 }
 }
 
-DcapClient::DcapClient(std::string address, std::uint16_t tcpPort, std::uint16_t udpPort)
-    : server_address_(std::move(address)), server_port_(tcpPort), udp_port_(udpPort) {}
+DcapClient::DcapClient(std::string address, std::uint16_t tcpPort, std::uint16_t udpPort,
+                       std::filesystem::path receivedFilesDirectory)
+    : server_address_(std::move(address)), server_port_(tcpPort), udp_port_(udpPort),
+      received_files_directory_(receivedFilesDirectory.empty()
+          ? std::filesystem::current_path() / "received_files"
+          : std::move(receivedFilesDirectory)) {}
 
 DcapClient::~DcapClient() { disconnect(); }
 
@@ -140,12 +146,24 @@ bool DcapClient::connect() {
     return true;
 }
 
-bool DcapClient::login(const std::string& name) {
+bool DcapClient::registerAccount(const std::string& name,
+                                  const std::string& password) {
     if (!connected_ || name.empty() || name.size() > protocol::MAX_USERNAME_BYTES ||
-        !protocol::validUtf8(name)) return false;
+        !protocol::validUtf8(name) || password.empty() || password.size() > 128 ||
+        !protocol::validUtf8(password)) return false;
+    protocol::Packet packet;
+    packet.type = protocol::Type::SIGN_UP;
+    if (!messages::encode(messages::SignUp{name,password}, packet.payload)) return false;
+    return sendTcp(std::move(packet));
+}
+
+bool DcapClient::login(const std::string& name, const std::string& password) {
+    if (!connected_ || name.empty() || name.size() > protocol::MAX_USERNAME_BYTES ||
+        !protocol::validUtf8(name) || password.empty() || password.size() > 128 ||
+        !protocol::validUtf8(password)) return false;
     protocol::Packet packet;
     packet.type = protocol::Type::AUTH;
-    if (!messages::encode(messages::Auth{name}, packet.payload)) return false;
+    if (!messages::encode(messages::Auth{name,password}, packet.payload)) return false;
     {
         std::lock_guard<std::mutex> lock(state_mutex_);
         username_ = name;
@@ -184,10 +202,15 @@ bool DcapClient::sendPrivate(const std::string& recipient, const std::string& te
     return sendTcp(std::move(packet));
 }
 
-std::string DcapClient::sendFile(const std::string& recipient, const std::filesystem::path& path) {
+std::string DcapClient::sendFile(const std::string& recipient, const std::filesystem::path& path,
+                                  const std::string& displayFilename) {
     if (!authenticated_ || recipient.empty()) return {};
     try {
-        auto sender = std::make_unique<filetransfer::FileSender>(path.string(), recipient, udp_sequence_);
+        const auto offeredFilename = displayFilename.empty()
+            ? path.filename().u8string()
+            : displayFilename;
+        auto sender = std::make_unique<filetransfer::FileSender>(
+            path.string(), recipient, udp_sequence_, offeredFilename);
         const auto id = fileproto::idHex(sender->offer().id);
         auto offer = sender->makeOffer(0);
         offer.sequence = tcp_sequence_.next();
@@ -204,8 +227,8 @@ std::string DcapClient::sendFile(const std::string& recipient, const std::filesy
             pending_file_offers_.erase(offerSequence);
             return {};
         }
-        emit("FILE_PROGRESS", {{"transferId", id}, {"filename", path.filename().string()},
-                               {"progress", 0}, {"status", "Waiting for recipient"}});
+        emit("FILE_PROGRESS", {{"transferId", id}, {"filename", offeredFilename},
+                               {"progress", 0}, {"status", "Sending to recipient"}});
         return id;
     } catch (const std::exception& error) {
         std::lock_guard<std::mutex> lock(state_mutex_);
@@ -224,7 +247,7 @@ bool DcapClient::decideFile(const std::string& id, bool accept) {
         if (accept) {
             try {
                 auto receiver = std::make_unique<filetransfer::FileReceiver>(
-                    offer, std::filesystem::current_path() / "received_files", udp_sequence_);
+                    offer, received_files_directory_, udp_sequence_);
                 receivers_[id] = std::move(receiver);
             } catch (const std::exception& error) {
                 emit("ERROR", {{"error", error.what()}});
@@ -291,8 +314,22 @@ void DcapClient::udpLoop() {
 
 void DcapClient::maintenanceLoop() {
     auto heartbeatAt = std::chrono::steady_clock::now();
+    auto tcpPingAt = heartbeatAt + TCP_PING_INTERVAL;
     while (running_) {
         const auto now = std::chrono::steady_clock::now();
+
+        // UDP heartbeat maintains the datagram endpoint. A separate TCP PING
+        // keeps the authenticated TCP session active while the user is idle.
+        if (authenticated_ && now >= tcpPingAt) {
+            const auto timestamp = nowMs();
+            protocol::Packet ping;
+            ping.type = protocol::Type::PING;
+            protocol::putU64(ping.payload, timestamp);
+            protocol::putU64(ping.payload, timestamp);
+            (void)sendTcp(std::move(ping));
+            tcpPingAt = now + TCP_PING_INTERVAL;
+        }
+
         if (authenticated_ && udp_registered_ && now >= heartbeatAt) {
             messages::Heartbeat heartbeat{nowMs(), nowMs()};
             protocol::Packet packet;
@@ -313,7 +350,7 @@ void DcapClient::maintenanceLoop() {
                 emit("FILE_PROGRESS", {{"transferId", it->first},
                     {"filename", sender.offer().filename}, {"progress", progress},
                     {"status", sender.state() == filetransfer::SenderState::WAIT_DECISION
-                        ? "Waiting for recipient" : "Transferring"}});
+                        ? "Preparing recipient" : "Transferring"}});
                 if (sender.state() == filetransfer::SenderState::COMPLETED) {
                     emit("FILE_COMPLETE", {{"transferId", it->first},
                         {"filename", sender.offer().filename}, {"progress", 100}});
@@ -343,6 +380,14 @@ void DcapClient::handleTcp(const protocol::Packet& packet) {
         authenticated_ = false;
         { std::lock_guard<std::mutex> lock(state_mutex_); username_.clear(); }
         emit("LOGIN_FAIL", {{"error", data.reason}, {"code", data.code}});
+        break;
+    }
+    case protocol::Type::SIGN_UP_OK:
+    case protocol::Type::SIGN_UP_FAIL: {
+        messages::AuthFail data;
+        if (!messages::decode(packet.payload, data)) break;
+        emit(packet.type == protocol::Type::SIGN_UP_OK ? "SIGNUP_OK" : "SIGNUP_FAIL",
+             {{"error", data.reason}, {"code", data.code}});
         break;
     }
     case protocol::Type::SESSION_INFO: {
@@ -391,9 +436,30 @@ void DcapClient::handleTcp(const protocol::Packet& packet) {
             std::lock_guard<std::mutex> lock(transfers_mutex_);
             incoming_offers_[id] = offer;
         }
+        // Wait only for transport readiness, never for manual user approval.
+        const auto udpReadyDeadline = std::chrono::steady_clock::now() +
+                                      std::chrono::seconds(5);
+        while (running_ && !udp_registered_ &&
+               std::chrono::steady_clock::now() < udpReadyDeadline) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+        if (!running_) break;
+        if (!udp_registered_) {
+            (void)decideFile(id, false);
+            emit("ERROR", {{"error", "Could not receive file because UDP is not ready"},
+                           {"transferId", id}, {"filename", offer.filename}});
+            break;
+        }
+
+        // Accept the offer automatically once this client can receive UDP data.
+        if (!decideFile(id, true)) {
+            emit("ERROR", {{"error", "Could not automatically accept incoming file"},
+                           {"transferId", id}, {"filename", offer.filename}});
+            break;
+        }
         emit("FILE_OFFER", {{"transfer_id", id}, {"transferId", id},
             {"sender", ""}, {"filename", offer.filename}, {"size", offer.size},
-            {"recipient", offer.recipient}});
+            {"recipient", offer.recipient}, {"autoAccepted", true}});
         break;
     }
     case protocol::Type::FILE_DECISION: {
@@ -495,7 +561,7 @@ void DcapClient::handleUdp(const protocol::Packet& packet) {
         if (receiver->second->state() == filetransfer::ReceiverState::COMPLETED) {
             emit("FILE_COMPLETE", {{"transferId", id},
                 {"filename", receiver->second->completedPath().filename().string()},
-                {"progress", 100}, {"status", "Received"}});
+                {"progress", 100}, {"status", "Received"}, {"received", true}});
             receivers_.erase(receiver);
         } else if (receiver->second->state() == filetransfer::ReceiverState::FAILED) {
             emit("ERROR", {{"error", receiver->second->lastError()}, {"transferId", id}});

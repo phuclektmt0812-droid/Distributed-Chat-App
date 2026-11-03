@@ -18,7 +18,6 @@ ifeq ($(OS),Windows_NT)
   RUN_ONE = powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/run-one-test.ps1 -Executable "$(TEST_BUILD_DIR)/$*$(EXEEXT)" -LogFile "$(LOG_FILE)"
   CLEAN_BUILD = if exist "$(BUILD_DIR)" rmdir /S /Q "$(BUILD_DIR)"
   CLEAN_APPS = if exist "server_app$(EXEEXT)" del /Q "server_app$(EXEEXT)" & if exist "client_agent$(EXEEXT)" del /Q "client_agent$(EXEEXT)"
-  CLEAN_LOG = if exist "$(LOG_FILE)" del /Q "$(LOG_FILE)"
 else
   EXEEXT ?=
   SHELL := /bin/sh
@@ -28,7 +27,6 @@ else
   RUN_ONE = sh scripts/run-one-test.sh "$<" "$(LOG_FILE)"
   CLEAN_BUILD = rm -rf "$(BUILD_DIR)"
   CLEAN_APPS = rm -f server_app$(EXEEXT) client_agent$(EXEEXT)
-  CLEAN_LOG = rm -f "$(LOG_FILE)"
 endif
 
 BUILD_DIR ?= make-build
@@ -74,23 +72,28 @@ TESTS = dcap_protocol_tests \
         dcap_file_relay_tests \
         dcap_security_edge_tests \
         dcap_http_bridge_tests \
+        dcap_live_web_gateway_tests \
         dcap_web_asset_tests
 
-.PHONY: all app server clients tests test test-one check clean list-tests $(TESTS) \
+.PHONY: all app server clients live-web-gateway tests test test-one check clean list-tests $(TESTS) \
         $(addprefix test-,$(TESTS))
 
 all: app tests
 
-app: server clients
+app: server clients live-web-gateway
 
 server: server_app$(EXEEXT)
 clients: client_agent$(EXEEXT)
+live-web-gateway: live_web_gateway$(EXEEXT)
 
 server_app$(EXEEXT): $(CORE) $(SERVER)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(CORE) $(SERVER) $(LDLIBS) $(THREADS) -o $@
 
 client_agent$(EXEEXT): $(CORE) $(CLIENT)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(CORE) $(CLIENT) $(LDLIBS) $(THREADS) -o $@
+
+live_web_gateway$(EXEEXT): $(CORE) gateway/live_web_gateway_main.cpp gateway/live_web_gateway.cpp clients/client.cpp $(FILE_TRANSFER)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(CORE) gateway/live_web_gateway_main.cpp gateway/live_web_gateway.cpp clients/client.cpp $(FILE_TRANSFER) $(LDLIBS) $(THREADS) -o $@
 
 define TEST_template
 $(TEST_BUILD_DIR)/$(1)$(EXEEXT): $(2) $(3)
@@ -123,6 +126,7 @@ $(eval $(call TEST_template,dcap_file_transfer_integration_tests,tests/test_file
 $(eval $(call TEST_template,dcap_file_relay_tests,tests/test_file_relay.cpp,$(DCAP_TEST_SUPPORT)))
 $(eval $(call TEST_template,dcap_security_edge_tests,tests/test_security_edges.cpp,$(CORE)))
 $(eval $(call TEST_template,dcap_http_bridge_tests,tests/test_http_bridge.cpp,$(DCAP_TEST_SUPPORT)))
+$(eval $(call TEST_template,dcap_live_web_gateway_tests,tests/test_live_web_gateway.cpp gateway/live_web_gateway.cpp,$(DCAP_TEST_SUPPORT)))
 $(eval $(call TEST_template,dcap_web_asset_tests,tests/test_web_assets.cpp,))
 
 tests: $(addprefix $(TEST_BUILD_DIR)/,$(addsuffix $(EXEEXT),$(TESTS)))

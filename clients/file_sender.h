@@ -19,7 +19,8 @@ enum class SenderState { WAIT_DECISION, WAIT_UDP_READY, SENDING, WAIT_COMPLETE, 
 class FileSender {
 public:
     FileSender(const std::string& input_path, const std::string& recipient,
-               protocol::SequenceCounter& udp_sequence);
+               protocol::SequenceCounter& udp_sequence,
+               std::string display_filename = {});
 
     protocol::Packet makeOffer(std::uint32_t tcp_sequence) const;
     bool handleDecision(const protocol::Packet& tcp_packet);

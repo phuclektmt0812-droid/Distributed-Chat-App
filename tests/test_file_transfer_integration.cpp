@@ -63,8 +63,8 @@ int main() {
                           "receiver saw a different transfer ID");
             test::require(offer.data.value("filename", std::string()) == "source.bin",
                           "receiver saw wrong filename");
-            test::require(receiver.decideFile(transferId, true),
-                          "receiver could not accept transfer");
+            test::require(offer.data.value("autoAccepted", false),
+                          "receiver did not automatically accept the transfer");
 
             const auto senderDone = test::waitForEvent(sender, "FILE_COMPLETE",
                                                         std::chrono::seconds(30));

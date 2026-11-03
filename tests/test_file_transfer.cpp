@@ -43,7 +43,12 @@ void testSenderReceiverRoundTrip() {
     try {
         protocol::SequenceCounter senderSequence;
         protocol::SequenceCounter receiverSequence;
-        filetransfer::FileSender sender(sourcePath.string(), "receiver", senderSequence);
+        const std::string displayFilename =
+            u8"Lê Hoàng Phúc Lab6Report.pdf";
+        filetransfer::FileSender sender(
+            sourcePath.string(), "receiver", senderSequence, displayFilename);
+        require(sender.offer().filename == displayFilename,
+                "Sender did not preserve the original UTF-8 filename");
         const auto offerPacket = sender.makeOffer(1);
         require(offerPacket.type == protocol::Type::FILE_OFFER,
                 "Sender did not create FILE_OFFER");
@@ -103,6 +108,8 @@ void testSenderReceiverRoundTrip() {
                 "Receiver did not enter COMPLETED state");
         require(readBytes(receiver.completedPath()) == original,
                 "Received file bytes do not match the original file");
+        require(receiver.completedPath().filename().u8string() == displayFilename,
+                "Receiver did not preserve the UTF-8 filename");
     } catch (...) {
         std::error_code ignored;
         std::filesystem::remove_all(root, ignored);

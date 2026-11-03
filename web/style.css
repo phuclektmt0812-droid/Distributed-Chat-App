@@ -163,6 +163,32 @@ button:disabled {
     line-height: 1.6;
 }
 
+.auth-mode-switch {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin: 20px 0 14px;
+    padding: 4px;
+    border-radius: 12px;
+    background: #edf0f7;
+}
+
+.auth-mode-button {
+    min-height: 38px;
+    border: 0;
+    border-radius: 9px;
+    background: transparent;
+    color: #667085;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.auth-mode-button.is-active {
+    background: #fff;
+    color: #27345d;
+    box-shadow: 0 1px 4px rgba(20, 30, 55, 0.12);
+}
+
 .login-form {
     display: grid;
     gap: 10px;

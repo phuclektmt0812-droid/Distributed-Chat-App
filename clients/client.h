@@ -29,11 +29,13 @@ struct AgentEvent {
 class DcapClient {
 public:
     DcapClient(std::string server_address, std::uint16_t server_port = 54000,
-               std::uint16_t udp_port = 54001);
+               std::uint16_t udp_port = 54001,
+               std::filesystem::path received_files_directory = {});
     ~DcapClient();
 
     bool connect();
-    bool login(const std::string& username);
+    bool registerAccount(const std::string& username, const std::string& password);
+    bool login(const std::string& username, const std::string& password);
     void logout();
     void disconnect();
 
@@ -44,7 +46,8 @@ public:
 
     bool sendGlobal(const std::string& text);
     bool sendPrivate(const std::string& recipient, const std::string& text);
-    std::string sendFile(const std::string& recipient, const std::filesystem::path& path);
+    std::string sendFile(const std::string& recipient, const std::filesystem::path& path,
+                         const std::string& displayFilename = {});
     bool decideFile(const std::string& transfer_id_hex, bool accept);
 
     std::vector<AgentEvent> takeEvents();
@@ -64,6 +67,7 @@ private:
     std::string server_address_;
     std::uint16_t server_port_;
     std::uint16_t udp_port_;
+    std::filesystem::path received_files_directory_;
     sockaddr_in server_udp_{};
     protocol::EncryptionKey encryption_key_{};
 

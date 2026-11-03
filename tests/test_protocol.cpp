@@ -43,6 +43,38 @@ void testPacketRoundTrip() {
         "TCP message type was accepted as a UDP datagram");
 }
 
+void testSignUpPacketTypes() {
+    const protocol::Type types[] = {
+        protocol::Type::SIGN_UP,
+        protocol::Type::SIGN_UP_OK,
+        protocol::Type::SIGN_UP_FAIL
+    };
+
+    for (const auto type : types) {
+        const auto rawType = static_cast<std::uint8_t>(type);
+        require(protocol::isValidType(rawType), "Sign-up packet type was not recognized");
+        require(protocol::isTcpType(type), "Sign-up packet type was not classified as TCP");
+
+        protocol::Packet original{type, 1, {}};
+        protocol::Bytes wire;
+        require(protocol::encodePacket(original, wire), "Could not encode sign-up packet");
+
+        protocol::Packet decoded;
+        require(protocol::decodePacket(wire, decoded), "Could not decode sign-up packet");
+        require(decoded.type == type, "Sign-up packet type changed during round trip");
+
+        std::vector<protocol::Packet> parsed;
+        protocol::TcpPacketParser parser;
+        require(parser.feed(wire.data(), wire.size(), parsed),
+                "TCP parser rejected a sign-up packet");
+        require(parsed.size() == 1 && parsed.front().type == type,
+                "TCP parser did not return the sign-up packet");
+
+        require(!protocol::decodeDatagram(wire, decoded),
+                "TCP sign-up packet was accepted as a UDP datagram");
+    }
+}
+
 void testTcpStreamParser() {
     protocol::Packet first{protocol::Type::MSG, 1, {1, 2, 3}};
     protocol::Packet second{protocol::Type::PRIVATE_MSG, 2, {4, 5}};
@@ -71,12 +103,13 @@ void testTcpStreamParser() {
 }
 
 void testPayloadCodecs() {
-    messages::Auth auth{"test-user"};
+    messages::Auth auth{"test-user", "test-pass-123"};
     protocol::Bytes bytes;
     require(messages::encode(auth, bytes), "Could not encode AUTH payload");
     messages::Auth decodedAuth;
     require(messages::decode(bytes, decodedAuth), "Could not decode AUTH payload");
-    require(decodedAuth.username == auth.username, "AUTH username changed");
+    require(decodedAuth.username == auth.username && decodedAuth.password == auth.password,
+        "AUTH credentials changed");
 
     messages::ChatRequest chat{77, "Hello DCAP"};
     require(messages::encode(chat, bytes), "Could not encode MSG payload");
@@ -128,6 +161,7 @@ void testFileMessageCodec() {
 int main() {
     try {
         testPacketRoundTrip();
+        testSignUpPacketTypes();
         testTcpStreamParser();
         testPayloadCodecs();
         testFileMessageCodec();

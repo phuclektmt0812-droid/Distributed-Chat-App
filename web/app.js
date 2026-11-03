@@ -6,7 +6,9 @@ const state = {
     currentRecipient: null,
     messages: [],
     activeTransfers: [],
-    eventPollingActive: false
+    eventPollingActive: false,
+    gatewayBaseUrl: "",
+    authMode: "login"
 };
 
 const elements = {};
@@ -19,17 +21,16 @@ let sessionGeneration = 0;
 const EVENT_POLL_INTERVAL = 800;
 const STATUS_POLL_INTERVAL = 5000;
 
-function bridgeUrl(path) {
-    const configuredUrl = elements.bridgeUrl.value.trim();
-    if (!configuredUrl) {
-        throw new Error("Enter the bridge address first.");
+function gatewayUrl(path) {
+    if (!state.gatewayBaseUrl) {
+        throw new Error("The chat gateway address is unavailable.");
     }
 
-    return new URL(path, `${configuredUrl.replace(/\/+$/, "")}/`).toString();
+    return new URL(path, `${state.gatewayBaseUrl.replace(/\/+$/, "")}/`).toString();
 }
 
 async function requestJson(path, options = {}) {
-    const response = await fetch(bridgeUrl(path), {
+    const response = await fetch(gatewayUrl(path), {
         ...options,
         headers: {
             ...(options.body ? { "Content-Type": "application/json" } : {}),
@@ -43,12 +44,12 @@ async function requestJson(path, options = {}) {
         try {
             payload = JSON.parse(responseText);
         } catch {
-            throw new Error("The bridge returned an invalid response.");
+            throw new Error("The gateway returned an invalid response.");
         }
     }
 
     if (!response.ok) {
-        throw new Error(payload.error || `Bridge request failed (${response.status}).`);
+        throw new Error(payload.error || `gateway request failed (${response.status}).`);
     }
 
     return payload;
@@ -99,22 +100,55 @@ function normalizeUser(user) {
     return "";
 }
 
+function setAuthMode(mode) {
+    state.authMode = mode === "signup" ? "signup" : "login";
+    const signingUp = state.authMode === "signup";
+    elements.loginModeButton.classList.toggle("is-active", !signingUp);
+    elements.signupModeButton.classList.toggle("is-active", signingUp);
+    elements.loginModeButton.setAttribute("aria-pressed", String(!signingUp));
+    elements.signupModeButton.setAttribute("aria-pressed", String(signingUp));
+    elements.password.autocomplete = signingUp ? "new-password" : "current-password";
+    elements.loginHint.textContent = signingUp
+        ? "Create an account with a unique username and a password of at least 8 characters."
+        : "Enter your username and password to log in.";
+    elements.loginButton.textContent = signingUp ? "Create account" : "Log in";
+    elements.loginTitle.textContent = signingUp ? "Create your account" : "Welcome back";
+    showNotice("");
+}
+
 async function login() {
     sessionGeneration += 1;
     const username = elements.username.value.trim();
+    const password = elements.password.value;
     if (!username) {
         showNotice("Enter a username.", "error");
         return;
     }
+    if (!password) {
+        showNotice("Enter your password.", "error");
+        return;
+    }
+    if (state.authMode === "signup" && password.length < 8) {
+        showNotice("Your password must contain at least 8 characters.", "error");
+        return;
+    }
 
-    showNotice("Connecting...", "info");
-    setButtonBusy(elements.loginButton, true, "Connecting...");
+    const signingUp = state.authMode === "signup";
+    showNotice(signingUp ? "Creating account..." : "Logging in...", "info");
+    setButtonBusy(elements.loginButton, true, signingUp ? "Creating..." : "Logging in...");
 
     try {
-        const result = await requestJson("/login", {
+        const result = await requestJson(signingUp ? "/signup" : "/login", {
             method: "POST",
-            body: JSON.stringify({ username })
+            body: JSON.stringify({ username, password })
         });
+
+        if (signingUp) {
+            elements.password.value = "";
+            setAuthMode("login");
+            showNotice(result.message || "Account created. You can now log in.", "success");
+            return;
+        }
 
         state.currentUser = result.username || username;
         state.authenticated = true;
@@ -122,6 +156,7 @@ async function login() {
         state.onlineUsers = [];
         state.activeTransfers = [];
         state.currentRecipient = null;
+        elements.password.value = "";
         setAuthenticatedView(true);
         setConnectionStatus("connected", "Connected");
         showNotice("");
@@ -134,7 +169,7 @@ async function login() {
     } catch (error) {
         state.authenticated = false;
         state.currentUser = null;
-        showNotice(error.message || "Unable to connect to the bridge.", "error");
+        showNotice(error.message || "Unable to connect to the gateway.", "error");
         setConnectionStatus("disconnected", "Disconnected");
     } finally {
         setButtonBusy(elements.loginButton, false);
@@ -407,17 +442,9 @@ function handleEvent(event) {
             if (!transferId) break;
             const filename = typeof data.filename === "string" ? data.filename : "a file";
             const incoming = findOrCreateTransfer({ transferId: transferId, filename });
-            incoming.status = "Incoming offer";
+            incoming.size = Number(data.size || 0);
+            incoming.status = "Receiving automatically";
             renderTransfers();
-            const size = Number(data.size || 0);
-            const sizeLabel = size > 0 ? ` (${(size / 1024 / 1024).toFixed(2)} MB)` : "";
-            const accepted = window.confirm(`Incoming file offer: ${filename}${sizeLabel}. Accept this file?`);
-            void requestJson("/file_decision", {
-                method: "POST",
-                body: JSON.stringify({ transfer_id: transferId, accept: accepted })
-            }).then(() => {
-                showNotice(accepted ? `Accepted ${filename}; receiving over UDP.` : `Rejected ${filename}.`, "info");
-            }).catch(error => showNotice(error.message || "Could not respond to file offer.", "error"));
             break;
         }
         case "FILE_PROGRESS":
@@ -451,7 +478,7 @@ async function pollEvents() {
         }
     } catch (error) {
         if (state.eventPollingActive) {
-            showNotice(error.message || "Bridge communication failed.", "error");
+            showNotice(error.message || "gateway communication failed.", "error");
             if (error.message && /authentication required|unauthorized/i.test(error.message)) {
                 stopEventPolling();
                 state.authenticated = false;
@@ -495,7 +522,7 @@ async function refreshConnectionStatus() {
         const connected = result.connected === true;
         const authenticated = result.authenticated === true;
         setConnectionStatus(connected ? "connected" : "disconnected",
-            connected ? "Connected to bridge" : "Bridge disconnected");
+            connected ? "Connected to gateway" : "gateway disconnected");
 
         if (generation !== sessionGeneration) {
             return;
@@ -527,7 +554,7 @@ async function refreshConnectionStatus() {
             );
         }
     } catch {
-        setConnectionStatus("disconnected", "Bridge unavailable");
+        setConnectionStatus("disconnected", "gateway unavailable");
     } finally {
         statusPollInFlight = false;
         statusPollTimer = window.setTimeout(refreshConnectionStatus, STATUS_POLL_INTERVAL);
@@ -548,6 +575,7 @@ function markTransferComplete(event) {
     const transfer = findOrCreateTransfer(event);
     transfer.progress = 100;
     transfer.status = "Complete";
+    transfer.downloadUrl = typeof event.download_url === "string" ? event.download_url : "";
     renderTransfers();
     showNotice(`Transfer ${transfer.filename || transfer.id} complete.`, "success");
 }
@@ -555,12 +583,21 @@ function markTransferComplete(event) {
 function findOrCreateTransfer(event) {
     const id = event.transferId ?? event.transfer_id;
     let transfer = state.activeTransfers.find(item => String(item.id) === String(id));
+    if (!transfer && typeof event.filename === "string") {
+        transfer = state.activeTransfers.find(item =>
+            item.awaitingTransferId && item.filename === event.filename
+        );
+        if (transfer && id !== undefined && id !== null) {
+            transfer.id = id;
+            transfer.awaitingTransferId = false;
+        }
+    }
     if (!transfer) {
         transfer = {
             id: id ?? `transfer-${Date.now()}`,
             filename: typeof event.filename === "string" ? event.filename : "File transfer",
             progress: 0,
-            status: "Waiting for transfer"
+            status: "Waiting for transfer",
         };
         state.activeTransfers.push(transfer);
     }
@@ -582,6 +619,13 @@ function renderTransfers() {
         progress.setAttribute("aria-label", `${label.textContent} progress`);
         status.textContent = `${transfer.status} (${Math.round(transfer.progress)}%)`;
         item.append(label, progress, status);
+        if (transfer.downloadUrl) {
+            const download = document.createElement("a");
+            download.href = transfer.downloadUrl;
+            download.textContent = "Download received file";
+            download.rel = "noopener";
+            item.append(download);
+        }
         elements.transferList.append(item);
     }
 }
@@ -606,11 +650,12 @@ function uploadFile() {
         id: `upload-${Date.now()}`,
         filename: file.name,
         progress: 0,
-        status: "Uploading to bridge"
+        status: "Uploading to gateway",
+        awaitingTransferId: true
     };
     state.activeTransfers.push(transfer);
     renderTransfers();
-    showNotice(`Uploading ${file.name} to the bridge.`, "info");
+    showNotice(`Uploading ${file.name} to the gateway.`, "info");
     setButtonBusy(elements.uploadButton, true, "Uploading...");
 
     const formData = new FormData();
@@ -619,11 +664,11 @@ function uploadFile() {
 
     const request = new XMLHttpRequest();
     try {
-        request.open("POST", bridgeUrl("/file_upload"));
+        request.open("POST", gatewayUrl("/file_upload"));
     } catch (error) {
         transfer.status = "Upload failed";
         renderTransfers();
-        showNotice(error.message || "Enter a valid bridge address.", "error");
+        showNotice(error.message || "Enter a valid gateway address.", "error");
         setButtonBusy(elements.uploadButton, false);
         return;
     }
@@ -636,9 +681,14 @@ function uploadFile() {
     request.addEventListener("load", () => {
         const payload = parseXhrResponse(request);
         if (request.status >= 200 && request.status < 300) {
-            transfer.status = "Uploaded to bridge; awaiting recipient confirmation";
+            if (payload.transfer_id) {
+                transfer.id = payload.transfer_id;
+                transfer.awaitingTransferId = false;
+            }
+            transfer.progress = 100;
+            transfer.status = "Transfer started";
             showNotice(
-                "Uploaded to bridge. This does not confirm UDP delivery to the recipient.",
+                "Uploaded to gateway. The recipient will receive the file automatically.",
                 "success"
             );
         } else {
@@ -653,7 +703,7 @@ function uploadFile() {
     request.addEventListener("error", () => {
         transfer.status = "Upload failed";
         renderTransfers();
-        showNotice("Could not communicate with the bridge during upload.", "error");
+        showNotice("Could not communicate with the gateway during upload.", "error");
         setButtonBusy(elements.uploadButton, false);
     });
 
@@ -674,7 +724,7 @@ function parseXhrResponse(request) {
     try {
         return JSON.parse(request.responseText);
     } catch {
-        return { error: "The bridge returned an invalid response." };
+        return { error: "The gateway returned an invalid response." };
     }
 }
 
@@ -688,6 +738,7 @@ async function logout() {
     state.activeTransfers = [];
     state.onlineUsers = [];
     setAuthenticatedView(false);
+    setAuthMode("login");
     setConnectionStatus("disconnected", "Disconnected");
     renderConversation();
     renderOnlineUsers();
@@ -700,16 +751,20 @@ async function logout() {
         });
         showNotice("You have logged out.", "info");
     } catch (error) {
-        showNotice(`Logged out locally, but bridge logout failed: ${error.message}`, "error");
+        showNotice(`Logged out locally, but gateway logout failed: ${error.message}`, "error");
     }
 }
 
 function initialize() {
-    elements.bridgeUrl = document.getElementById("bridge-url");
     elements.loginSection = document.getElementById("login-section");
     elements.chatSection = document.getElementById("chat-section");
     elements.loginForm = document.getElementById("login-form");
     elements.username = document.getElementById("username");
+    elements.password = document.getElementById("password");
+    elements.loginTitle = document.getElementById("login-title");
+    elements.loginHint = document.getElementById("login-hint");
+    elements.loginModeButton = document.getElementById("login-mode-button");
+    elements.signupModeButton = document.getElementById("signup-mode-button");
     elements.loginButton = document.getElementById("login-button");
     elements.logoutButton = document.getElementById("logout-button");
     elements.currentUsername = document.getElementById("current-username");
@@ -731,15 +786,17 @@ function initialize() {
 
     const configuredUrl = window.CHAT_API_BASE_URL;
     if (typeof configuredUrl === "string" && configuredUrl.trim()) {
-        elements.bridgeUrl.value = configuredUrl.trim();
+        state.gatewayBaseUrl = configuredUrl.trim();
     } else if (window.location.protocol === "http:" || window.location.protocol === "https:") {
-        elements.bridgeUrl.value = window.location.origin;
+        state.gatewayBaseUrl = window.location.origin;
     }
 
     elements.loginForm.addEventListener("submit", event => {
         event.preventDefault();
         void login();
     });
+    elements.loginModeButton.addEventListener("click", () => setAuthMode("login"));
+    elements.signupModeButton.addEventListener("click", () => setAuthMode("signup"));
     elements.messageForm.addEventListener("submit", event => {
         event.preventDefault();
         void sendMessage();

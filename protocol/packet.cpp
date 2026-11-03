@@ -12,13 +12,13 @@ std::uint32_t load32(const std::uint8_t* p) {
 } // namespace
 
 bool isValidType(std::uint8_t t) {
-    return (t >= 1 && t <= 17) || (t >= 32 && t <= 37) || (t >= 40 && t <= 47);
+    return (t >= 1 && t <= 20) || (t >= 32 && t <= 37) || (t >= 40 && t <= 47);
 }
 bool isUdpType(Type t) {
     return (std::uint8_t(t) >= 32 && std::uint8_t(t) <= 37) ||
            (std::uint8_t(t) >= 40 && std::uint8_t(t) <= 47);
 }
-bool isTcpType(Type t) { return std::uint8_t(t) >= 1 && std::uint8_t(t) <= 17; }
+bool isTcpType(Type t) { return std::uint8_t(t) >= 1 && std::uint8_t(t) <= 20; }
 
 void ByteWriter::u8(std::uint8_t v) { bytes_.push_back(v); }
 void ByteWriter::u16(std::uint16_t v) {
