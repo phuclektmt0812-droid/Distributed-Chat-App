@@ -61,8 +61,17 @@ int main() {
             privateEvent.data.value("content", std::string()) == "message only for bob" &&
             privateEvent.data.value("sender", std::string()) == "alice" &&
             privateEvent.data.value("recipient", std::string()) == "bob",
-            "Private message fields did not match"
+            "Recipient did not receive the correct private message"
         );
+
+        const auto senderPrivateEvent = test::waitForEvent(alice, "CHAT_PRIVATE");
+        test::require(
+            senderPrivateEvent.data.value("content", std::string()) == "message only for bob" &&
+            senderPrivateEvent.data.value("sender", std::string()) == "alice" &&
+            senderPrivateEvent.data.value("recipient", std::string()) == "bob",
+            "Sender did not receive its own private message"
+        );
+
         test::require(
             test::noEvent(charlie, "CHAT_PRIVATE", std::chrono::milliseconds(350)),
             "Private message was incorrectly delivered to Charlie"
