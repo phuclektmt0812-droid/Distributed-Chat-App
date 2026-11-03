@@ -1,8 +1,7 @@
-# Distributed Chat App - GNU Make build
-# Run from the repository root with GNU Make and a C++17 compiler.
+# Distributed Chat App - portable GNU Make build
+# Requires GNU Make, a C++17 compiler, and OpenSSL development files.
 
 CXX ?= g++
-AR ?= ar
 CXXFLAGS ?= -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror
 CPPFLAGS ?= -I.
 LDLIBS ?= -lcrypto
@@ -11,8 +10,23 @@ THREADS ?= -pthread
 ifeq ($(OS),Windows_NT)
   EXEEXT ?= .exe
   LDLIBS += -lws2_32
+  # GnuWin32 Make on Windows uses cmd.exe for built-in commands.
+  SHELL := cmd.exe
+  .SHELLFLAGS := /C
+  MKDIR_BUILD = if not exist "$(TEST_BUILD_DIR)" mkdir "$(TEST_BUILD_DIR)"
+  RUN_TESTS = powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/run-tests.ps1 -TestDirectory "$(TEST_BUILD_DIR)" -Tests "$(TESTS)"
+  RUN_ONE = powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/run-one-test.ps1 -Executable "$(TEST_BUILD_DIR)/$*$(EXEEXT)"
+  CLEAN_BUILD = if exist "$(BUILD_DIR)" rmdir /S /Q "$(BUILD_DIR)"
+  CLEAN_APPS = if exist "server_app$(EXEEXT)" del /Q "server_app$(EXEEXT)" & if exist "client_agent$(EXEEXT)" del /Q "client_agent$(EXEEXT)"
 else
   EXEEXT ?=
+  SHELL := /bin/sh
+  .SHELLFLAGS := -c
+  MKDIR_BUILD = mkdir -p "$(TEST_BUILD_DIR)"
+  RUN_TESTS = set -e; for name in $(TESTS); do echo ""; echo "========== $$name =========="; "./$(TEST_BUILD_DIR)/$$name$(EXEEXT)"; done; echo ""; echo "All $(words $(TESTS)) test programs passed."
+  RUN_ONE = "./$<"
+  CLEAN_BUILD = rm -rf "$(BUILD_DIR)"
+  CLEAN_APPS = rm -f server_app$(EXEEXT) client_agent$(EXEEXT)
 endif
 
 BUILD_DIR ?= make-build
@@ -33,7 +47,6 @@ CLIENT = clients/client_agent_main.cpp clients/client.cpp clients/http_bridge.cp
          $(FILE_TRANSFER)
 CLIENT_SUPPORT = clients/client.cpp clients/http_bridge.cpp
 
-# Same shared implementation sources used by dcap_test_support in CMake.
 DCAP_TEST_SUPPORT = $(CORE) $(SERVER_SUPPORT) $(CLIENT_SUPPORT) $(FILE_TRANSFER)
 
 TESTS = dcap_protocol_tests \
@@ -63,7 +76,6 @@ TESTS = dcap_protocol_tests \
 .PHONY: all app server clients tests test test-one check clean list-tests $(TESTS) \
         $(addprefix test-,$(TESTS))
 
-# Default: build the server, client, and every test executable.
 all: app tests
 
 app: server clients
@@ -77,17 +89,10 @@ server_app$(EXEEXT): $(CORE) $(SERVER)
 client_agent$(EXEEXT): $(CORE) $(CLIENT)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(CORE) $(CLIENT) $(LDLIBS) $(THREADS) -o $@
 
-# Compile each test as a separate executable. Individual tests can be built with:
-#   make dcap_login_tests
-#   make dcap_file_transfer_integration_tests
 define TEST_template
 $(TEST_BUILD_DIR)/$(1)$(EXEEXT): $(2) $(3)
-ifeq ($(OS),Windows_NT)
-	@if not exist "$(TEST_BUILD_DIR)" mkdir "$(TEST_BUILD_DIR)"
-else
-	@mkdir -p $(TEST_BUILD_DIR)
-endif
-	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(2) $(3) $(LDLIBS) $(THREADS) -o $@
+	@$(MKDIR_BUILD)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(2) $(3) $(LDLIBS) $(THREADS) -o $$@
 
 .PHONY: $(1)
 $(1): $(TEST_BUILD_DIR)/$(1)$(EXEEXT)
@@ -119,55 +124,30 @@ $(eval $(call TEST_template,dcap_web_asset_tests,tests/test_web_assets.cpp,))
 
 tests: $(addprefix $(TEST_BUILD_DIR)/,$(addsuffix $(EXEEXT),$(TESTS)))
 
-# Execute tests serially. Several integration tests bind the same fixed TCP/UDP
-# ports (54000/54001), so parallel test execution is intentionally avoided.
+test: tests
 ifeq ($(OS),Windows_NT)
-test: tests
-	@powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-tests.ps1 -TestDirectory "$(TEST_BUILD_DIR)" -Tests "$(TESTS)"
+	@$(RUN_TESTS)
 else
-test: tests
-	@set -e; for name in $(TESTS); do \
-		echo ""; \
-		echo "========== $name =========="; \
-		./$(TEST_BUILD_DIR)/$name$(EXEEXT); \
-	done
-	@echo ""
-	@echo "All $(words $(TESTS)) test programs passed."
+	@$(RUN_TESTS)
 endif
 
 check: test
 
-# Build and run one test using either:
-#   make run-dcap_login_tests
-#   make test-dcap_login_tests
 .PHONY: run-%
 run-%: $(TEST_BUILD_DIR)/%$(EXEEXT)
 ifeq ($(OS),Windows_NT)
-	@powershell -NoProfile -ExecutionPolicy Bypass -Command "& '$(TEST_BUILD_DIR)/$*$(EXEEXT)'; exit $LASTEXITCODE"
+	@$(RUN_ONE)
 else
-	@./$<
+	@$(RUN_ONE)
 endif
 
-# Convenient explicit aliases for every registered test.
 $(foreach name,$(TESTS),$(eval test-$(name): run-$(name)))
 
-# Alternative single-test interface:
-#   make test-one TEST=dcap_login_tests
-test-one:
-	@if [ -z "$(TEST)" ]; then \
-		echo "Usage: make test-one TEST=<test-name>"; \
-		echo "Run 'make list-tests' to see available tests."; \
-		exit 2; \
-	fi
-	@if ! echo " $(TESTS) " | grep -q " $(TEST) "; then \
-		echo "Unknown test: $(TEST)"; \
-		echo "Run 'make list-tests' to see available tests."; \
-		exit 2; \
-	fi
-	@$(MAKE) --no-print-directory run-$(TEST)
+test-one: run-$(TEST)
 
 list-tests:
-	@printf '%s\n' $(TESTS)
+	@echo $(TESTS)
 
 clean:
-	rm -rf $(BUILD_DIR) server_app$(EXEEXT) client_agent$(EXEEXT)
+	@$(CLEAN_BUILD)
+	@$(CLEAN_APPS)
