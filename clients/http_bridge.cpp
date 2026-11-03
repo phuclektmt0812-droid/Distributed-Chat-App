@@ -1,5 +1,5 @@
 #include "http_bridge.h"
-#include "../protocol/packet.h"
+#include "../protocol/protocol.h"
 #include <nlohmann/json.hpp>
 #include <algorithm>
 #include <cctype>
