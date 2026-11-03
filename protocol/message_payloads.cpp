@@ -10,18 +10,32 @@ bool validName(const std::string& s) {
     for (unsigned char c:s) if (c<32 || c==127) return false;
     return true;
 }
+bool validPassword(const std::string& s) { return !s.empty() && s.size()<=128 && protocol::validUtf8(s); }
 bool validText(const std::string& s) { return !s.empty() && s.size()<=4096 && protocol::validUtf8(s); }
 bool readName(R& r,std::string& s) { return r.str(s,32) && validName(s); }
 bool readText(R& r,std::string& s) { return r.str(s,4096) && validText(s); }
 } // namespace
 
 bool encode(const Auth& p,protocol::Bytes& b) {
-    if (!validName(p.username)) return false;
-    W w; if (!w.str(p.username)) return false; b=w.take(); return true;
+    if (!validName(p.username) || !validPassword(p.password)) return false;
+    W w; if (!w.str(p.username) || !w.str(p.password)) return false;
+    b=w.take(); return true;
 }
 bool decode(const protocol::Bytes& b,Auth& o) {
     R r(b); Auth p;
-    if (!readName(r,p.username) || !r.done()) return false;
+    if (!readName(r,p.username) || !r.str(p.password,128) ||
+        !validPassword(p.password) || !r.done()) return false;
+    o=std::move(p); return true;
+}
+bool encode(const SignUp& p,protocol::Bytes& b) {
+    if (!validName(p.username) || !validPassword(p.password)) return false;
+    W w; if (!w.str(p.username) || !w.str(p.password)) return false;
+    b=w.take(); return true;
+}
+bool decode(const protocol::Bytes& b,SignUp& o) {
+    R r(b); SignUp p;
+    if (!readName(r,p.username) || !r.str(p.password,128) ||
+        !validPassword(p.password) || !r.done()) return false;
     o=std::move(p); return true;
 }
 bool encode(const AuthOk& p,protocol::Bytes& b) {
