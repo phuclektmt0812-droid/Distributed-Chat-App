@@ -940,7 +940,7 @@ void LiveWebGateway::handleConnection(SocketHandle socket) {
                                         ? "Could not start file transfer" : session->client->lastError()}};
                                 } else {
                                     status = 202;
-                                    response = {{"transfer_id", transferId}, {"status", "offered"}};
+                                    response = {{"transfer_id", transferId}, {"status", "started"}};
                                 }
                             } catch (const std::exception& error) {
                                 status = 500;
