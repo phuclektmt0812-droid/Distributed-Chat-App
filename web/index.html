@@ -32,21 +32,21 @@
             <div class="panel-intro">
                 <p class="eyebrow">Welcome back</p>
                 <h2 id="login-title">Sign in to your chat</h2>
-                <p>Connect to the local HTTP bridge to see who's online and start chatting.</p>
+                <p>Connect to the public chat gateway to see who's online and start chatting.</p>
             </div>
             <form id="login-form" class="login-form">
-                <label for="bridge-url">Bridge address</label>
+                <label for="bridge-url">Gateway address</label>
                 <input
                     id="bridge-url"
                     name="bridge-url"
                     type="url"
-                    placeholder="http://127.0.0.1:PORT"
+                    placeholder="https://chat.example.com"
                     autocomplete="url"
                     required
                 >
                 <label for="username">Username</label>
                 <input id="username" name="username" type="text" maxlength="64" autocomplete="username" required>
-                <p class="login-hint">Protocol v1 authenticates by username; passwords are not part of this course protocol.</p>
+                <p class="login-hint">The gateway address is filled automatically when this page is hosted by the gateway. Protocol v1 currently uses username-only login.</p>
                 <button id="login-button" class="button button-primary" type="submit">Connect</button>
             </form>
         </section>
