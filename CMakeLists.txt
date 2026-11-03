@@ -54,6 +54,14 @@ add_executable(client_agent
 target_include_directories(client_agent PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(client_agent PRIVATE client_file_transfer chat_protocol nlohmann_json::nlohmann_json)
 
+add_executable(live_web_gateway
+    gateway/live_web_gateway_main.cpp
+    gateway/live_web_gateway.cpp
+    clients/client.cpp
+)
+target_include_directories(live_web_gateway PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+target_link_libraries(live_web_gateway PRIVATE client_file_transfer chat_protocol nlohmann_json::nlohmann_json)
+
 # Shared current-protocol server/client/HTTP implementation for integration tests.
 add_library(dcap_test_support STATIC
     server/server.cpp
