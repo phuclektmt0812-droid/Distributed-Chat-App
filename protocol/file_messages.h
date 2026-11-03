@@ -2,6 +2,7 @@
 
 #include "packet.h"
 #include <array>
+#include <filesystem>
 #include <string>
 
 namespace fileproto {
@@ -29,7 +30,7 @@ struct Result { TransferId id{}; std::uint8_t status = 0; std::uint16_t error_co
 
 TransferId randomId();
 std::string idHex(const TransferId& id);
-Digest sha256File(const std::string& path);
+Digest sha256File(const std::filesystem::path& path);
 std::uint32_t chunkCount(std::uint64_t size); // throws std::invalid_argument if above 100 MiB
 
 bool encode(const Offer&, protocol::Bytes&);    bool decode(const protocol::Bytes&, Offer&);
