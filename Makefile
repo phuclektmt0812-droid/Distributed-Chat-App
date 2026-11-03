@@ -73,7 +73,7 @@ TESTS = dcap_protocol_tests \
         dcap_http_bridge_tests \
         dcap_web_asset_tests
 
-.PHONY: all app server clients tests test test-one check clean list-tests $(TESTS) \
+.PHONY: all app server clients live-web-gateway tests test test-one check clean list-tests $(TESTS) \
         $(addprefix test-,$(TESTS))
 
 all: app tests
