@@ -30,15 +30,21 @@
 
         <section id="login-section" class="login-panel" aria-labelledby="login-title">
             <div class="panel-intro">
-                <p class="eyebrow">Welcome back</p>
-                <h2 id="login-title">Sign in to your chat</h2>
-                <p>Connect to the public chat gateway to see who's online and start chatting.</p>
+                <p class="eyebrow">Your account</p>
+                <h2 id="login-title">Welcome to Distributed Chat</h2>
+                <p>Log in to your account or create a new one to start chatting across devices.</p>
+            </div>
+            <div class="auth-mode-switch" role="group" aria-label="Account action">
+                <button id="login-mode-button" class="auth-mode-button is-active" type="button" aria-pressed="true">Log in</button>
+                <button id="signup-mode-button" class="auth-mode-button" type="button" aria-pressed="false">Create account</button>
             </div>
             <form id="login-form" class="login-form">
                 <label for="username">Username</label>
-                <input id="username" name="username" type="text" maxlength="64" autocomplete="username" required>
-                <p class="login-hint">Sign in with your username to start chatting. Password authentication is not enabled yet.</p>
-                <button id="login-button" class="button button-primary" type="submit">Connect</button>
+                <input id="username" name="username" type="text" maxlength="32" autocomplete="username" required>
+                <label for="password">Password</label>
+                <input id="password" name="password" type="password" minlength="8" maxlength="128" autocomplete="current-password" required>
+                <p id="login-hint" class="login-hint">Enter your username and password to log in.</p>
+                <button id="login-button" class="button button-primary" type="submit">Log in</button>
             </form>
         </section>
 
