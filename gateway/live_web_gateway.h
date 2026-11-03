@@ -26,6 +26,7 @@ private:
     struct Session;
 
     void acceptLoop();
+    void expireIdleSessions();
     void handleConnection(SocketHandle socket);
     std::shared_ptr<Session> findSession(const std::string& token);
     std::string sessionTokenFromCookie(const std::string& cookie) const;
