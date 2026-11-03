@@ -30,9 +30,10 @@ start the actual DCAP v1 server and clients.
 | \`dcap_file_transfer_integration_tests\` | \`test_file_transfer_integration.cpp\` | Actual two-client transfer through server UDP relay, final file bytes and completion events |
 | \`dcap_file_relay_tests\` | \`test_file_relay.cpp\` | Recipient rejection, timeout expiry, peer disconnect cleanup and per-sender transfer limit |
 | \`dcap_http_bridge_tests\` | \`test_http_bridge.cpp\` | HTTP status/login/logout, auth gating, user list, global message routing, web asset serving, malformed JSON/multipart, unknown endpoint and local-origin CORS |
+| \`dcap_live_web_gateway_tests\` | \`test_live_web_gateway.cpp\` | Two independent browser cookies map to separate DCAP users; private messages reach both sender and recipient sessions |
 | \`dcap_web_asset_tests\` | \`test_web_assets.cpp\` | HTML element/API contract, JS endpoint references and stylesheet presence |
 
-There are 23 registered CTest programs. A program may contain several
+There are 24 registered CTest programs. A program may contain several
 assertions/scenarios; the table intentionally describes logical coverage rather
 than claiming each assertion is a separate CTest case.
 
@@ -41,7 +42,7 @@ than claiming each assertion is a separate CTest case.
 Run from the repository root:
 
 \`\`\`bash
-# Build server, client, and all 23 test executables
+# Build server, client, and all 24 test executables
 make
 
 # Or build only the test executables
@@ -58,7 +59,7 @@ make dcap_login_tests       # build one test
 make run-dcap_login_tests   # build and run one test
 \`\`\`
 
-Replace \`dcap_login_tests\` with any of the 23 names in the table above. Integration tests that use the fixed TCP/UDP ports are run sequentially by \`make test\` to avoid port conflicts.
+Replace \`dcap_login_tests\` with any of the 24 names in the table above. Integration tests that use the fixed TCP/UDP ports are run sequentially by \`make test\` to avoid port conflicts.
 
 Clean Make-generated outputs with \`make clean\`.
 
