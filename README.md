@@ -61,6 +61,7 @@ Useful targets:
 - \`make tests\`: build all test executables without running them.
 - \`make test\`: build and run all 23 tests sequentially.
 - \`make dcap_login_tests\`: build one test executable (replace with any test name listed in \`tests/README.md\`).
+- \`make run-dcap_login_tests\`: build and run one test executable.
 - \`make clean\`: remove Make-generated binaries and the \`make-build/\` directory.
 
 Build outputs are placed in \`make-build/tests/\`; the server and client executables are created in the repository root.
