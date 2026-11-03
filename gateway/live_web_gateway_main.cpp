@@ -18,9 +18,9 @@ std::uint16_t parsePort(const char* value, std::uint16_t fallback) {
 
 int main(int argc, char** argv) {
     try {
-        if (argc > 5) {
+        if (argc > 6) {
             std::cerr << "Usage: live_web_gateway [server-ip] [server-tcp-port] "
-                         "[http-port] [web-root]\n";
+                         "[http-port] [web-root] [bind-ipv4]\n";
             return 2;
         }
 
@@ -28,8 +28,9 @@ int main(int argc, char** argv) {
         const auto serverPort = parsePort(argc > 2 ? argv[2] : nullptr, 54000);
         const auto httpPort = parsePort(argc > 3 ? argv[3] : nullptr, 8081);
         const std::string webRoot = argc > 4 ? argv[4] : "web";
+        const std::string bindAddress = argc > 5 ? argv[5] : "127.0.0.1";
 
-        LiveWebGateway gateway(serverAddress, serverPort, httpPort, webRoot);
+        LiveWebGateway gateway(serverAddress, serverPort, httpPort, webRoot, bindAddress);
         if (!gateway.start()) {
             std::cerr << "Could not start the public web gateway. "
                          "Check the port, web assets, and server configuration.\n";
