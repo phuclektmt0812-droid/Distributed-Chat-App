@@ -118,8 +118,16 @@ void TcpSession::handle(const Packet& p) {
             sendError(p,ERR_MALFORMED_PACKET,"Could not encode private message");
             return;
         }
-        if(server_.sendTo(target,forwarded)) sendAck(p,1,"Private message routed");
-        else sendError(p,ERR_USER_NOT_FOUND,"Recipient connection failed");
+        if(!server_.sendTo(target,forwarded)) {
+            sendError(p,ERR_USER_NOT_FOUND,"Recipient connection failed");
+            return;
+        }
+
+        // Deliver the same server-authored event to the sender so both
+        // participants see the private message in their conversation.
+        // Avoid sending it twice when a client addresses itself.
+        if(target!=session_) server_.sendTo(session_,forwarded);
+        sendAck(p,1,"Private message routed");
         return;
     }
     if(p.type==Type::PING) {
