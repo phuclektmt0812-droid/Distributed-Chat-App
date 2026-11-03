@@ -45,9 +45,9 @@ std::string idHex(const TransferId& id) {
     for (auto b : id) s << std::hex << std::setw(2) << std::setfill('0') << unsigned(b);
     return s.str();
 }
-Digest sha256File(const std::string& path) {
+Digest sha256File(const std::filesystem::path& path) {
     std::ifstream in(path, std::ios::binary);
-    if (!in) throw std::runtime_error("cannot open file for SHA-256: " + path);
+    if (!in) throw std::runtime_error("cannot open file for SHA-256: " + path.string());
     using Ptr = std::unique_ptr<EVP_MD_CTX, decltype(&EVP_MD_CTX_free)>;
     Ptr ctx(EVP_MD_CTX_new(), EVP_MD_CTX_free);
     if (!ctx || EVP_DigestInit_ex(ctx.get(), EVP_sha256(), nullptr) != 1)
