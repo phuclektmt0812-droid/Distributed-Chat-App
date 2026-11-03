@@ -23,6 +23,7 @@ std::uint64_t nowMs() {
     return static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::system_clock::now().time_since_epoch()).count());
 }
+constexpr auto TCP_PING_INTERVAL = std::chrono::seconds(30);
 std::string idFromPayload(const protocol::Bytes& payload) {
     if (payload.size() < 16) return {};
     fileproto::TransferId id{};
@@ -295,8 +296,22 @@ void DcapClient::udpLoop() {
 
 void DcapClient::maintenanceLoop() {
     auto heartbeatAt = std::chrono::steady_clock::now();
+    auto tcpPingAt = heartbeatAt + TCP_PING_INTERVAL;
     while (running_) {
         const auto now = std::chrono::steady_clock::now();
+
+        // UDP heartbeat maintains the datagram endpoint. A separate TCP PING
+        // keeps the authenticated TCP session active while the user is idle.
+        if (authenticated_ && now >= tcpPingAt) {
+            const auto timestamp = nowMs();
+            protocol::Packet ping;
+            ping.type = protocol::Type::PING;
+            protocol::putU64(ping.payload, timestamp);
+            protocol::putU64(ping.payload, timestamp);
+            (void)sendTcp(std::move(ping));
+            tcpPingAt = now + TCP_PING_INTERVAL;
+        }
+
         if (authenticated_ && udp_registered_ && now >= heartbeatAt) {
             messages::Heartbeat heartbeat{nowMs(), nowMs()};
             protocol::Packet packet;
