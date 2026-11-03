@@ -33,6 +33,7 @@ namespace {
 constexpr std::size_t MAX_HEADER_BYTES = 16 * 1024;
 constexpr std::size_t MAX_HTTP_BODY_BYTES = 110ULL * 1024ULL * 1024ULL;
 constexpr std::size_t MAX_ACTIVE_SESSIONS = 64;
+constexpr std::size_t MAX_ACTIVE_HTTP_WORKERS = 128;
 constexpr std::uint64_t SESSION_IDLE_TIMEOUT_MS = 12ULL * 60ULL * 60ULL * 1000ULL;
 
 struct HttpRequest {
@@ -120,7 +121,11 @@ int readRequest(SocketHandle socket, HttpRequest& request, std::string& error) {
             error = "HTTP request headers are too large";
             return 431;
         }
-        headerEnd = raw.find("\r\n\r\n");
+            headerEnd = raw.find("\r\n\r\n");
+    }
+    if (headerEnd > MAX_HEADER_BYTES) {
+        error = "HTTP request headers are too large";
+        return 431;
     }
 
     std::istringstream stream(raw.substr(0, headerEnd));
@@ -408,6 +413,11 @@ void LiveWebGateway::acceptLoop() {
 
         {
             std::lock_guard<std::mutex> lock(workers_mutex_);
+            if (active_workers_ >= MAX_ACTIVE_HTTP_WORKERS) {
+                shutdownSocket(client);
+                closeSocket(client);
+                continue;
+            }
             ++active_workers_;
         }
         std::thread([this, client] {
@@ -507,6 +517,14 @@ void LiveWebGateway::handleConnection(SocketHandle socket) {
                     } else {
                         {
                             std::lock_guard<std::mutex> lock(sessions_mutex_);
+                            const auto now = nowMs();
+                            for (auto it = sessions_.begin(); it != sessions_.end();) {
+                                const auto last = it->second->last_activity_ms.load();
+                                if (now >= last && now - last > SESSION_IDLE_TIMEOUT_MS)
+                                    it = sessions_.erase(it);
+                                else
+                                    ++it;
+                            }
                             if (sessions_.size() >= MAX_ACTIVE_SESSIONS) {
                                 status = 429;
                                 response = {{"error", "The public gateway is at session capacity"}};
