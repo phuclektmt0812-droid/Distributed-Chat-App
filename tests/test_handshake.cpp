@@ -25,8 +25,12 @@ protocol::Packet receiveSecure(SocketHandle s, const protocol::EncryptionKey& ke
     require(receiveExact(s, header.data(), header.size()), "server response header missing");
     const auto length = protocol::readU32(header.data() + 10);
     require(length <= protocol::MAX_TCP_PAYLOAD, "server response length invalid");
-    protocol::Bytes wire(header.begin(), header.end());
-    wire.resize(protocol::HEADER_SIZE + length);
+    const std::size_t frameSize =
+        protocol::HEADER_SIZE + static_cast<std::size_t>(length);
+    protocol::Bytes wire(frameSize);
+    for (std::size_t i = 0; i < header.size(); ++i) {
+        wire[i] = header[i];
+    }
     if (length)
         require(receiveExact(s, wire.data() + protocol::HEADER_SIZE, length),
                 "server response body truncated");
