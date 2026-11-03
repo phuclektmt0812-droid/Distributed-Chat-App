@@ -35,9 +35,11 @@ void testByteReaderWriterAndUtf8() {
     require(a == 0xFE && b == 0xABCD && c == 0x12345678 &&
             d == 0x0102030405060708ULL && s == "Tiếng Việt 🌐" && reader.done(),
             "ByteWriter/ByteReader round trip mismatch");
-    protocol::ByteReader truncated(protocol::Bytes{0x01});
+    const protocol::Bytes truncatedBytes{0x01};
+    protocol::ByteReader truncated(truncatedBytes);
     require(!truncated.u16(b), "truncated integer accepted");
-    protocol::ByteReader invalidString(protocol::Bytes{0x00, 0x02, 0xC0, 0xAF});
+    const protocol::Bytes invalidStringBytes{0x00, 0x02, 0xC0, 0xAF};
+    protocol::ByteReader invalidString(invalidStringBytes);
     require(!invalidString.str(s), "overlong UTF-8 string accepted");
     require(protocol::validUtf8("ASCII and 日本語"), "valid UTF-8 rejected");
     require(!protocol::validUtf8(std::string("\x80", 1)), "stray continuation byte accepted");
