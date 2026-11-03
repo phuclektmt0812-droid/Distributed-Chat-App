@@ -13,8 +13,6 @@ start the actual DCAP v1 server and clients.
 | \`dcap_transport_tests\` | \`test_transport.cpp\` | Integer/string helpers, plain and encrypted TCP send/receive, plain and encrypted UDP send/receive, wrong transport type and wrong-key rejection |
 | \`dcap_message_codec_tests\` | \`test_message_codecs.cpp\` | AUTH, AUTH_OK/FAIL, session/UDP registration, heartbeat, chat/private chat, user list, ACK, ERROR, notices and invalid values |
 | \`dcap_file_message_codec_tests\` | \`test_file_message_codecs.cpp\` | All FILE_* metadata/control codecs, size/chunk calculations, invalid names, sizes, windows, bitmap and status values |
-| \`dcap_legacy_message_tests\` | \`test_legacy_message.cpp\` | Retained legacy JSON message serializer/parser and malformed JSON |
-| \`dcap_legacy_udp_packet_tests\` | \`test_legacy_udp_packet.cpp\` | Retained legacy UDP packet codec, checksum, malformed header/type/length |
 | \`dcap_security_tests\` | \`security_tests.cpp\` | AES-256-GCM round trip, wrong key, tampering, key persistence |
 | \`dcap_security_edge_tests\` | \`test_security_edges.cpp\` | Empty payloads, nonce/tag/header tampering, TCP-vs-UDP restrictions, key file creation/format/permissions/environment |
 | \`dcap_socket_compat_tests\` | \`test_socket_compat.cpp\` | Loopback TCP, partial/exact I/O helpers, zero-length I/O, close behavior, timeout and keepalive options |
@@ -34,7 +32,7 @@ start the actual DCAP v1 server and clients.
 | \`dcap_http_bridge_tests\` | \`test_http_bridge.cpp\` | HTTP status/login/logout, auth gating, user list, global message routing, web asset serving, malformed JSON/multipart, unknown endpoint and local-origin CORS |
 | \`dcap_web_asset_tests\` | \`test_web_assets.cpp\` | HTML element/API contract, JS endpoint references and stylesheet presence |
 
-There are 25 registered CTest programs. A program may contain several
+There are 23 registered CTest programs. A program may contain several
 assertions/scenarios; the table intentionally describes logical coverage rather
 than claiming each assertion is a separate CTest case.
 
@@ -68,14 +66,15 @@ The active DCAP v1 build targets are defined by \`CMakeLists.txt\` and
 layer, file sender, file receiver, and file relay.
 
 The repository also retains an older, separate length-prefixed JSON / direct
-UDP implementation. Files such as \`clients/client.cpp\`,
-\`clients/connection.cpp\`, \`clients/file_transfer.cpp\`,
-\`clients/http_bridge.cpp\`, \`server/client_session.cpp\`, and
-\`server/message_router.cpp\` are not part of the current CMake/Makefile build.
+UDP implementation. Files such as `clients/client.cpp`,
+`clients/connection.cpp`, `clients/file_transfer.cpp`,
+`clients/http_bridge.cpp`, `server/client_session.cpp`, and
+`server/message_router.cpp` are not part of the current CMake/Makefile build.
 Their API/model differs from the active DCAP v1 server and client, so they are
-not represented as end-to-end supported features by this suite. The standalone
-legacy JSON and UDP packet codecs are tested separately. Integrating or removing
-the remaining legacy classes is a separate source-code decision.
+outside the scope of this active-application test suite. The unused legacy
+codec-only test files have been removed rather than counted as coverage for
+the current DCAP v1 application. Integrating or removing the remaining legacy
+classes is a separate source-code decision.
 
 ## Known coverage gaps / manual or future tests
 

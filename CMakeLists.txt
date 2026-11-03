@@ -96,7 +96,7 @@ add_executable(dcap_security_tests tests/security_tests.cpp)
 target_link_libraries(dcap_security_tests PRIVATE chat_protocol)
 add_test(NAME dcap_security_tests COMMAND dcap_security_tests)
 
-# Packet, payload, file-message, and retained legacy codecs.
+# Packet, payload, and file-message codecs.
 add_executable(dcap_protocol_edge_tests tests/test_protocol_edges.cpp)
 target_link_libraries(dcap_protocol_edge_tests PRIVATE chat_protocol)
 add_test(NAME dcap_protocol_edge_tests COMMAND dcap_protocol_edge_tests)
@@ -112,19 +112,6 @@ add_test(NAME dcap_message_codec_tests COMMAND dcap_message_codec_tests)
 add_executable(dcap_file_message_codec_tests tests/test_file_message_codecs.cpp)
 target_link_libraries(dcap_file_message_codec_tests PRIVATE chat_protocol)
 add_test(NAME dcap_file_message_codec_tests COMMAND dcap_file_message_codec_tests)
-
-add_executable(dcap_legacy_message_tests
-    tests/test_legacy_message.cpp
-    protocol/message.cpp
-)
-target_link_libraries(dcap_legacy_message_tests PRIVATE nlohmann_json::nlohmann_json)
-add_test(NAME dcap_legacy_message_tests COMMAND dcap_legacy_message_tests)
-
-add_executable(dcap_legacy_udp_packet_tests
-    tests/test_legacy_udp_packet.cpp
-    protocol/udp_packet.cpp
-)
-add_test(NAME dcap_legacy_udp_packet_tests COMMAND dcap_legacy_udp_packet_tests)
 
 # Socket, user/session, and client/server integration.
 add_executable(dcap_user_manager_tests
