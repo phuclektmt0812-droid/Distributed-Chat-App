@@ -31,8 +31,12 @@ std::string idFromPayload(const protocol::Bytes& payload) {
 }
 }
 
-DcapClient::DcapClient(std::string address, std::uint16_t tcpPort, std::uint16_t udpPort)
-    : server_address_(std::move(address)), server_port_(tcpPort), udp_port_(udpPort) {}
+DcapClient::DcapClient(std::string address, std::uint16_t tcpPort, std::uint16_t udpPort,
+                       std::filesystem::path receivedFilesDirectory)
+    : server_address_(std::move(address)), server_port_(tcpPort), udp_port_(udpPort),
+      received_files_directory_(receivedFilesDirectory.empty()
+          ? std::filesystem::current_path() / "received_files"
+          : std::move(receivedFilesDirectory)) {}
 
 DcapClient::~DcapClient() { disconnect(); }
 
@@ -224,7 +228,7 @@ bool DcapClient::decideFile(const std::string& id, bool accept) {
         if (accept) {
             try {
                 auto receiver = std::make_unique<filetransfer::FileReceiver>(
-                    offer, std::filesystem::current_path() / "received_files", udp_sequence_);
+                    offer, received_files_directory_, udp_sequence_);
                 receivers_[id] = std::move(receiver);
             } catch (const std::exception& error) {
                 emit("ERROR", {{"error", error.what()}});
