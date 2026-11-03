@@ -1,9 +1,11 @@
 #include "live_web_gateway.h"
 
 #include "../protocol/protocol.h"
+#include "../protocol/constants.h"
 
 #include <openssl/rand.h>
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cctype>
 #include <climits>
