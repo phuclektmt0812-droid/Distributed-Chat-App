@@ -8,6 +8,16 @@
 #endif
 #include <winsock2.h>
 #include <ws2tcpip.h>
+
+// Windows headers define ERROR and FILE_END as macros. They collide with
+// protocol::Type enumerators using the same names, so remove them after the
+// Windows headers have been included.
+#ifdef ERROR
+#undef ERROR
+#endif
+#ifdef FILE_END
+#undef FILE_END
+#endif
 using SocketHandle = SOCKET;
 using SocketLength = int;
 constexpr SocketHandle INVALID_SOCKET_HANDLE = INVALID_SOCKET;
