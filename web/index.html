@@ -35,19 +35,9 @@
                 <p>Connect to the public chat gateway to see who's online and start chatting.</p>
             </div>
             <form id="login-form" class="login-form">
-                <label for="gateway-url">Gateway address</label>
-                <input
-                    id="gateway-url"
-                    name="gateway-url"
-                    type="url"
-                    placeholder="https://chat.example.com"
-                    autocomplete="url"
-                    readonly
-                    required
-                >
                 <label for="username">Username</label>
                 <input id="username" name="username" type="text" maxlength="64" autocomplete="username" required>
-                <p class="login-hint">The gateway address is filled automatically when this page is hosted by the gateway. Protocol v1 currently uses username-only login.</p>
+                <p class="login-hint">Sign in with your username to start chatting. Password authentication is not enabled yet.</p>
                 <button id="login-button" class="button button-primary" type="submit">Connect</button>
             </form>
         </section>
