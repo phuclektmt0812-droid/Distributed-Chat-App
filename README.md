@@ -139,7 +139,7 @@ make
 
 On macOS, use `gmake` instead of `make`.
 
-The default target builds the Server, Client Agent, Public Web Gateway, and all 23 test executables. It does **not** run the tests.
+The default target builds the Server, Client Agent, Public Web Gateway, and all 24 test executables. It does **not** run the tests.
 
 | Command | Action |
 |---|---|
@@ -343,7 +343,7 @@ The browser's initial upload progress describes transfer from the browser to its
 
 ## Testing
 
-The repository contains 23 test executables covering packet and message codecs, transport, authentication, chat routing, UDP service, session management, concurrency, file-transfer state machines, server-relay integration, security, and the HTTP bridge.
+The repository contains 24 test executables covering packet and message codecs, transport, authentication, chat routing, UDP service, session management, concurrency, file-transfer state machines, server-relay integration, security, and the HTTP bridge.
 
 Run all tests:
 
@@ -363,8 +363,9 @@ See [tests/README.md](tests/README.md) for the complete test list and coverage d
 
 On Windows with MSYS2 UCRT64 / MinGW-w64 GCC 14.2.0:
 
-- The full `make` build completed successfully.
-- `make test` completed with **23/23 test programs passed**.
+- The full `make` build completed successfully on the earlier 23-test version.
+- `make test` completed with **23/23 test programs passed** on that earlier version.
+- The Live Web Gateway integration test was added afterward; the current 24-test branch has not yet been fully built and run in this editing session.
 
 This is a reported Windows test run, not a claim that CI has tested every operating system. Linux and macOS builds should be run in their respective environments before treating those platforms as verified.
 
