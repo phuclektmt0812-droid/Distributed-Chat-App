@@ -54,8 +54,8 @@ make test
 To build or run an individual test, use its CTest name as a Make target. For example:
 
 \`\`\`bash
-make dcap_login_tests
-./make-build/tests/dcap_login_tests
+make dcap_login_tests       # build one test
+make run-dcap_login_tests   # build and run one test
 \`\`\`
 
 Replace \`dcap_login_tests\` with any of the 23 names in the table above. Integration tests that use the fixed TCP/UDP ports are run sequentially by \`make test\` to avoid port conflicts.
