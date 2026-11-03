@@ -71,6 +71,7 @@ TESTS = dcap_protocol_tests \
         dcap_file_relay_tests \
         dcap_security_edge_tests \
         dcap_http_bridge_tests \
+        dcap_live_web_gateway_tests \
         dcap_web_asset_tests
 
 .PHONY: all app server clients live-web-gateway tests test test-one check clean list-tests $(TESTS) \
@@ -124,6 +125,7 @@ $(eval $(call TEST_template,dcap_file_transfer_integration_tests,tests/test_file
 $(eval $(call TEST_template,dcap_file_relay_tests,tests/test_file_relay.cpp,$(DCAP_TEST_SUPPORT)))
 $(eval $(call TEST_template,dcap_security_edge_tests,tests/test_security_edges.cpp,$(CORE)))
 $(eval $(call TEST_template,dcap_http_bridge_tests,tests/test_http_bridge.cpp,$(DCAP_TEST_SUPPORT)))
+$(eval $(call TEST_template,dcap_live_web_gateway_tests,tests/test_live_web_gateway.cpp gateway/live_web_gateway.cpp,$(DCAP_TEST_SUPPORT)))
 $(eval $(call TEST_template,dcap_web_asset_tests,tests/test_web_assets.cpp,))
 
 tests: $(addprefix $(TEST_BUILD_DIR)/,$(addsuffix $(EXEEXT),$(TESTS)))
