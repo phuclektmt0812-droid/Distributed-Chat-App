@@ -708,7 +708,8 @@ void LiveWebGateway::handleConnection(SocketHandle socket) {
                             const auto filename = safeFilename(
                                 event.data.value("filename", std::string()));
                             if (transferId.size() == 32 && !filename.empty() &&
-                                std::filesystem::exists(session->received_files_directory / filename)) {
+                                std::filesystem::exists(
+                                    session->received_files_directory / std::filesystem::u8path(filename))) {
                                 {
                                     std::lock_guard<std::mutex> fileLock(session->completed_files_mutex);
                                     session->completed_files[transferId] = filename;
@@ -759,7 +760,8 @@ void LiveWebGateway::handleConnection(SocketHandle socket) {
                             status = 404;
                             response = {{"error", "Completed file not found for this session"}};
                         } else {
-                            const auto filePath = session->received_files_directory / safeFilename(filename);
+                            const auto filePath = session->received_files_directory /
+                                std::filesystem::u8path(safeFilename(filename));
                             std::ifstream input(filePath, std::ios::binary);
                             if (!input) {
                                 status = 404;
@@ -813,16 +815,19 @@ void LiveWebGateway::handleConnection(SocketHandle socket) {
                                 const auto directory = std::filesystem::current_path() /
                                     "uploads" / "live-web" / token;
                                 std::filesystem::create_directories(directory);
+                                // Keep the temporary disk path ASCII-only. The original
+                                // UTF-8 filename is carried separately in FILE_OFFER metadata.
                                 const auto uploadPath = directory /
                                     (std::to_string(nowMs()) + "-" +
-                                     randomToken().substr(0, 8) + "-" + filename);
+                                     randomToken().substr(0, 8) + ".upload");
                                 std::ofstream output(uploadPath, std::ios::binary);
                                 if (!output) throw std::runtime_error("Could not create upload file");
                                 output.write(fileBytes.data(),
                                     static_cast<std::streamsize>(fileBytes.size()));
                                 output.close();
                                 if (!output) throw std::runtime_error("Could not save uploaded file");
-                                const auto transferId = session->client->sendFile(recipient, uploadPath);
+                                const auto transferId =
+                                    session->client->sendFile(recipient, uploadPath, filename);
                                 if (transferId.empty()) {
                                     status = 422;
                                     response = {{"error", session->client->lastError().empty()
