@@ -7,7 +7,8 @@ const state = {
     messages: [],
     activeTransfers: [],
     eventPollingActive: false,
-    gatewayBaseUrl: ""
+    gatewayBaseUrl: "",
+    authMode: "login"
 };
 
 const elements = {};
@@ -99,22 +100,55 @@ function normalizeUser(user) {
     return "";
 }
 
+function setAuthMode(mode) {
+    state.authMode = mode === "signup" ? "signup" : "login";
+    const signingUp = state.authMode === "signup";
+    elements.loginModeButton.classList.toggle("is-active", !signingUp);
+    elements.signupModeButton.classList.toggle("is-active", signingUp);
+    elements.loginModeButton.setAttribute("aria-pressed", String(!signingUp));
+    elements.signupModeButton.setAttribute("aria-pressed", String(signingUp));
+    elements.password.autocomplete = signingUp ? "new-password" : "current-password";
+    elements.loginHint.textContent = signingUp
+        ? "Create an account with a unique username and a password of at least 8 characters."
+        : "Enter your username and password to log in.";
+    elements.loginButton.textContent = signingUp ? "Create account" : "Log in";
+    elements.loginTitle.textContent = signingUp ? "Create your account" : "Welcome back";
+    showNotice("");
+}
+
 async function login() {
     sessionGeneration += 1;
     const username = elements.username.value.trim();
+    const password = elements.password.value;
     if (!username) {
         showNotice("Enter a username.", "error");
         return;
     }
+    if (!password) {
+        showNotice("Enter your password.", "error");
+        return;
+    }
+    if (state.authMode === "signup" && password.length < 8) {
+        showNotice("Your password must contain at least 8 characters.", "error");
+        return;
+    }
 
-    showNotice("Connecting...", "info");
-    setButtonBusy(elements.loginButton, true, "Connecting...");
+    const signingUp = state.authMode === "signup";
+    showNotice(signingUp ? "Creating account..." : "Logging in...", "info");
+    setButtonBusy(elements.loginButton, true, signingUp ? "Creating..." : "Logging in...");
 
     try {
-        const result = await requestJson("/login", {
+        const result = await requestJson(signingUp ? "/signup" : "/login", {
             method: "POST",
-            body: JSON.stringify({ username })
+            body: JSON.stringify({ username, password })
         });
+
+        if (signingUp) {
+            elements.password.value = "";
+            setAuthMode("login");
+            showNotice(result.message || "Account created. You can now log in.", "success");
+            return;
+        }
 
         state.currentUser = result.username || username;
         state.authenticated = true;
@@ -122,6 +156,7 @@ async function login() {
         state.onlineUsers = [];
         state.activeTransfers = [];
         state.currentRecipient = null;
+        elements.password.value = "";
         setAuthenticatedView(true);
         setConnectionStatus("connected", "Connected");
         showNotice("");
@@ -757,6 +792,7 @@ async function logout() {
     state.activeTransfers = [];
     state.onlineUsers = [];
     setAuthenticatedView(false);
+    setAuthMode("login");
     setConnectionStatus("disconnected", "Disconnected");
     renderConversation();
     renderOnlineUsers();
@@ -778,6 +814,11 @@ function initialize() {
     elements.chatSection = document.getElementById("chat-section");
     elements.loginForm = document.getElementById("login-form");
     elements.username = document.getElementById("username");
+    elements.password = document.getElementById("password");
+    elements.loginTitle = document.getElementById("login-title");
+    elements.loginHint = document.getElementById("login-hint");
+    elements.loginModeButton = document.getElementById("login-mode-button");
+    elements.signupModeButton = document.getElementById("signup-mode-button");
     elements.loginButton = document.getElementById("login-button");
     elements.logoutButton = document.getElementById("logout-button");
     elements.currentUsername = document.getElementById("current-username");
@@ -808,6 +849,8 @@ function initialize() {
         event.preventDefault();
         void login();
     });
+    elements.loginModeButton.addEventListener("click", () => setAuthMode("login"));
+    elements.signupModeButton.addEventListener("click", () => setAuthMode("signup"));
     elements.messageForm.addEventListener("submit", event => {
         event.preventDefault();
         void sendMessage();
