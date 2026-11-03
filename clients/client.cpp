@@ -350,7 +350,7 @@ void DcapClient::maintenanceLoop() {
                 emit("FILE_PROGRESS", {{"transferId", it->first},
                     {"filename", sender.offer().filename}, {"progress", progress},
                     {"status", sender.state() == filetransfer::SenderState::WAIT_DECISION
-                        ? "Waiting for recipient" : "Transferring"}});
+                        ? "Preparing recipient" : "Transferring"}});
                 if (sender.state() == filetransfer::SenderState::COMPLETED) {
                     emit("FILE_COMPLETE", {{"transferId", it->first},
                         {"filename", sender.offer().filename}, {"progress", 100}});
