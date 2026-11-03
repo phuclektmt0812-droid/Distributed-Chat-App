@@ -227,7 +227,7 @@ std::string DcapClient::sendFile(const std::string& recipient, const std::filesy
             return {};
         }
         emit("FILE_PROGRESS", {{"transferId", id}, {"filename", offeredFilename},
-                               {"progress", 0}, {"status", "Waiting for recipient"}});
+                               {"progress", 0}, {"status", "Sending to recipient"}});
         return id;
     } catch (const std::exception& error) {
         std::lock_guard<std::mutex> lock(state_mutex_);
@@ -435,9 +435,16 @@ void DcapClient::handleTcp(const protocol::Packet& packet) {
             std::lock_guard<std::mutex> lock(transfers_mutex_);
             incoming_offers_[id] = offer;
         }
+        // Receive files automatically; the recipient no longer needs to
+        // approve each incoming transfer in the UI.
+        if (!decideFile(id, true)) {
+            emit("ERROR", {{"error", "Could not automatically accept incoming file"},
+                           {"transferId", id}, {"filename", offer.filename}});
+            break;
+        }
         emit("FILE_OFFER", {{"transfer_id", id}, {"transferId", id},
             {"sender", ""}, {"filename", offer.filename}, {"size", offer.size},
-            {"recipient", offer.recipient}});
+            {"recipient", offer.recipient}, {"autoAccepted", true}});
         break;
     }
     case protocol::Type::FILE_DECISION: {
