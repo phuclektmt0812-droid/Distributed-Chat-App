@@ -45,7 +45,8 @@ public:
 
     bool sendGlobal(const std::string& text);
     bool sendPrivate(const std::string& recipient, const std::string& text);
-    std::string sendFile(const std::string& recipient, const std::filesystem::path& path);
+    std::string sendFile(const std::string& recipient, const std::filesystem::path& path,
+                         const std::string& displayFilename = {});
     bool decideFile(const std::string& transfer_id_hex, bool accept);
 
     std::vector<AgentEvent> takeEvents();
