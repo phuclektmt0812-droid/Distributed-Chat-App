@@ -576,18 +576,99 @@ void LiveWebGateway::handleConnection(SocketHandle socket) {
         } else {
             const auto token = sessionTokenFromCookie(request.header("cookie"));
 
-            if (request.method == "POST" && path == "/login") {
+            if (request.method == "POST" && path == "/signup") {
                 json data;
                 if (!parseJsonObject(request.body, data) ||
-                    !data.contains("username") || !data["username"].is_string()) {
+                    !data.contains("username") || !data["username"].is_string() ||
+                    !data.contains("password") || !data["password"].is_string()) {
                     status = 400;
-                    response = {{"error", "Username is required"}};
+                    response = {{"error", "Username and password are required"}};
                 } else {
                     const auto username = data["username"].get<std::string>();
+                    const auto password = data["password"].get<std::string>();
                     if (username.empty() || username.size() > protocol::MAX_USERNAME_BYTES ||
                         !protocol::validUtf8(username)) {
                         status = 400;
                         response = {{"error", "Username must be valid UTF-8 and at most 32 bytes"}};
+                    } else if (password.size() < 8 || password.size() > 128 ||
+                               !protocol::validUtf8(password)) {
+                        status = 400;
+                        response = {{"error", "Password must contain 8 to 128 UTF-8 bytes"}};
+                    } else {
+                        try {
+                            const auto temporaryToken = randomToken();
+                            const auto receiveDirectory = std::filesystem::current_path() /
+                                "received_files" / "live-web" / temporaryToken;
+                            std::filesystem::create_directories(receiveDirectory);
+                            auto signupSession = std::make_shared<Session>(
+                                server_address_, server_port_, receiveDirectory);
+
+                            if (!signupSession->client->connect()) {
+                                status = 503;
+                                response = {{"error", signupSession->client->lastError()}};
+                            } else if (!signupSession->client->registerAccount(username, password)) {
+                                status = 400;
+                                response = {{"error", "Could not send sign-up request"}};
+                                signupSession->client->disconnect();
+                            } else {
+                                bool created = false;
+                                bool rejected = false;
+                                std::uint16_t rejectionCode = 0;
+                                std::string rejectionReason;
+                                const auto deadline = std::chrono::steady_clock::now() +
+                                                      std::chrono::seconds(8);
+                                while (std::chrono::steady_clock::now() < deadline &&
+                                       !created && !rejected) {
+                                    for (const auto& event : signupSession->client->takeEvents()) {
+                                        if (event.type == "SIGNUP_OK") {
+                                            created = true;
+                                        } else if (event.type == "SIGNUP_FAIL") {
+                                            rejected = true;
+                                            rejectionCode = event.data.value("code", 0);
+                                            rejectionReason = event.data.value(
+                                                "error", std::string("Sign-up rejected"));
+                                        }
+                                    }
+                                    if (!created && !rejected)
+                                        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                                }
+                                signupSession->client->disconnect();
+                                if (created) {
+                                    status = 200;
+                                    response = {{"created", true},
+                                                {"message", "Account created. You can now log in."}};
+                                } else if (rejected) {
+                                    status = rejectionCode == protocol::ACCOUNT_EXISTS ? 409 : 400;
+                                    response = {{"error", rejectionReason}, {"code", rejectionCode}};
+                                } else {
+                                    status = 504;
+                                    response = {{"error", "Timed out waiting for account registration"}};
+                                }
+                            }
+                        } catch (const std::exception& error) {
+                            status = 500;
+                            response = {{"error", error.what()}};
+                        }
+                    }
+                }
+            } else if (request.method == "POST" && path == "/login") {
+                json data;
+                if (!parseJsonObject(request.body, data) ||
+                    !data.contains("username") || !data["username"].is_string() ||
+                    !data.contains("password") || !data["password"].is_string()) {
+                    status = 400;
+                    response = {{"error", "Username and password are required"}};
+                } else {
+                    const auto username = data["username"].get<std::string>();
+                    const auto password = data["password"].get<std::string>();
+                    if (username.empty() || username.size() > protocol::MAX_USERNAME_BYTES ||
+                        !protocol::validUtf8(username)) {
+                        status = 400;
+                        response = {{"error", "Username must be valid UTF-8 and at most 32 bytes"}};
+                    } else if (password.empty() || password.size() > 128 ||
+                               !protocol::validUtf8(password)) {
+                        status = 400;
+                        response = {{"error", "A valid password is required"}};
                     } else {
                         expireIdleSessions();
                         {
@@ -609,23 +690,25 @@ void LiveWebGateway::handleConnection(SocketHandle socket) {
                                 if (!session->client->connect()) {
                                     status = 503;
                                     response = {{"error", session->client->lastError()}};
-                                } else if (!session->client->login(username)) {
+                                } else if (!session->client->login(username, password)) {
                                     status = 400;
                                     response = {{"error", "Could not send login request"}};
                                     session->client->disconnect();
                                 } else {
                                     bool authenticated = false;
                                     bool rejected = false;
+                                    std::uint16_t rejectionCode = 0;
                                     std::string rejectionReason;
                                     const auto deadline = std::chrono::steady_clock::now() +
                                                           std::chrono::seconds(8);
                                     while (std::chrono::steady_clock::now() < deadline &&
                                            !authenticated && !rejected) {
-                                        for (auto& event : session->client->takeEvents()) {
+                                        for (const auto& event : session->client->takeEvents()) {
                                             if (event.type == "LOGIN_OK") {
                                                 authenticated = true;
                                             } else if (event.type == "LOGIN_FAIL") {
                                                 rejected = true;
+                                                rejectionCode = event.data.value("code", 0);
                                                 rejectionReason = event.data.value(
                                                     "error", std::string("Login rejected"));
                                             } else {
@@ -657,9 +740,16 @@ void LiveWebGateway::handleConnection(SocketHandle socket) {
                                         }
                                         if (status != 200) session->client->logout();
                                     } else {
-                                        status = rejected ? 401 : 504;
-                                        response = {{"error", rejected ? rejectionReason :
-                                            "Timed out waiting for server authentication"}};
+                                        if (!rejected) {
+                                            status = 504;
+                                            response = {{"error", "Timed out waiting for server authentication"}};
+                                        } else if (rejectionCode == protocol::ACCOUNT_ALREADY_ONLINE) {
+                                            status = 409;
+                                            response = {{"error", rejectionReason}, {"code", rejectionCode}};
+                                        } else {
+                                            status = 401;
+                                            response = {{"error", rejectionReason}, {"code", rejectionCode}};
+                                        }
                                         session->client->disconnect();
                                     }
                                 }
@@ -670,7 +760,7 @@ void LiveWebGateway::handleConnection(SocketHandle socket) {
                         }
                     }
                 }
-            } else if (request.method == "POST" && path == "/logout") {
+} else if (request.method == "POST" && path == "/logout") {
                 auto session = findSession(token);
                 if (session) {
                     {
