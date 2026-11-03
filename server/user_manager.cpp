@@ -82,6 +82,20 @@ UserManager::UserManager() {
 
 UserManager::~UserManager() = default;
 
+bool UserManager::initializeAccountStore() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    accounts_.reset();
+    users_.clear();
+    revision_ = 0;
+    storage_ready_ = true;
+    const char* configuredPath = std::getenv("DCAP_ACCOUNT_FILE");
+    account_store_path_ = configuredPath && *configuredPath
+        ? std::filesystem::u8path(configuredPath)
+        : std::filesystem::current_path() / "accounts.db";
+    loadAccounts();
+    return storage_ready_;
+}
+
 UserManager::AccountNode* UserManager::findAccount(const std::string& username) {
     auto* current = accounts_.get();
     while (current) {
