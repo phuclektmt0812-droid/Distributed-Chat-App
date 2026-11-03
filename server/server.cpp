@@ -17,6 +17,10 @@ FileRelay& Server::fileRelay() { return *fileRelay_; }
 
 bool Server::start() {
     if(running_) return true;
+    if (!users_.initializeAccountStore()) {
+        std::cerr << "[ACCOUNTS] Could not load the account database safely" << std::endl;
+        return false;
+    }
     try { encryptionKey_=protocol::loadOrCreateKeyFile(protocol::keyFilePathFromEnvironment());
         std::cout<<"[SECURITY] Using persistent key file: "<<protocol::keyFilePathFromEnvironment()<<std::endl; }
     catch(const std::exception& error) { std::cerr<<"[SECURITY] "<<error.what()<<std::endl; return false; }
@@ -150,7 +154,7 @@ void Server::broadcastMessage(const std::shared_ptr<ClientSession>& sender,
 void Server::removeSession(const std::shared_ptr<ClientSession>& s) {
     if(!s) return;
     fileRelay_->removeSession(s);
-    users_.remove(s->username);
+    users_.remove(s);
     std::cout<<"[DISCONNECT] "<<s->username<<std::endl;
     broadcastUserList();
 }
