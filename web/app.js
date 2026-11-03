@@ -407,17 +407,12 @@ function handleEvent(event) {
             if (!transferId) break;
             const filename = typeof data.filename === "string" ? data.filename : "a file";
             const incoming = findOrCreateTransfer({ transferId: transferId, filename });
-            incoming.status = "Incoming offer";
+            incoming.size = Number(data.size || 0);
+            incoming.status = "Awaiting your decision";
+            incoming.pendingDecision = true;
+            incoming.decisionInFlight = false;
             renderTransfers();
-            const size = Number(data.size || 0);
-            const sizeLabel = size > 0 ? ` (${(size / 1024 / 1024).toFixed(2)} MB)` : "";
-            const accepted = window.confirm(`Incoming file offer: ${filename}${sizeLabel}. Accept this file?`);
-            void requestJson("/file_decision", {
-                method: "POST",
-                body: JSON.stringify({ transfer_id: transferId, accept: accepted })
-            }).then(() => {
-                showNotice(accepted ? `Accepted ${filename}; receiving over UDP.` : `Rejected ${filename}.`, "info");
-            }).catch(error => showNotice(error.message || "Could not respond to file offer.", "error"));
+            showNotice(`Incoming file offer: ${filename}. Choose Accept or Reject in the transfer list.`, "info");
             break;
         }
         case "FILE_PROGRESS":
@@ -556,16 +551,55 @@ function markTransferComplete(event) {
 function findOrCreateTransfer(event) {
     const id = event.transferId ?? event.transfer_id;
     let transfer = state.activeTransfers.find(item => String(item.id) === String(id));
+    if (!transfer && typeof event.filename === "string") {
+        transfer = state.activeTransfers.find(item =>
+            item.awaitingTransferId && item.filename === event.filename
+        );
+        if (transfer && id !== undefined && id !== null) {
+            transfer.id = id;
+            transfer.awaitingTransferId = false;
+        }
+    }
     if (!transfer) {
         transfer = {
             id: id ?? `transfer-${Date.now()}`,
             filename: typeof event.filename === "string" ? event.filename : "File transfer",
             progress: 0,
-            status: "Waiting for transfer"
+            status: "Waiting for transfer",
+            pendingDecision: false,
+            decisionInFlight: false
         };
         state.activeTransfers.push(transfer);
     }
     return transfer;
+}
+
+async function decideIncomingFile(transfer, accepted) {
+    if (!transfer || !transfer.pendingDecision || transfer.decisionInFlight) return;
+
+    transfer.decisionInFlight = true;
+    transfer.status = accepted ? "Accepting file..." : "Rejecting file...";
+    renderTransfers();
+
+    try {
+        await requestJson("/file_decision", {
+            method: "POST",
+            body: JSON.stringify({ transfer_id: transfer.id, accept: accepted })
+        });
+        transfer.pendingDecision = false;
+        transfer.decisionInFlight = false;
+        transfer.status = accepted ? "Accepted; preparing to receive" : "Rejected by you";
+        renderTransfers();
+        showNotice(
+            accepted ? `Accepted ${transfer.filename}; receiving over UDP.` : `Rejected ${transfer.filename}.`,
+            accepted ? "success" : "info"
+        );
+    } catch (error) {
+        transfer.decisionInFlight = false;
+        transfer.status = "Could not send decision; try again";
+        renderTransfers();
+        showNotice(error.message || "Could not respond to file offer.", "error");
+    }
 }
 
 function renderTransfers() {
@@ -583,6 +617,27 @@ function renderTransfers() {
         progress.setAttribute("aria-label", `${label.textContent} progress`);
         status.textContent = `${transfer.status} (${Math.round(transfer.progress)}%)`;
         item.append(label, progress, status);
+        if (transfer.pendingDecision) {
+            const actions = document.createElement("div");
+            const accept = document.createElement("button");
+            const reject = document.createElement("button");
+
+            actions.className = "transfer-actions";
+            accept.type = "button";
+            accept.className = "button button-primary";
+            accept.textContent = "Accept";
+            accept.disabled = Boolean(transfer.decisionInFlight);
+            accept.addEventListener("click", () => void decideIncomingFile(transfer, true));
+
+            reject.type = "button";
+            reject.className = "button button-quiet";
+            reject.textContent = "Reject";
+            reject.disabled = Boolean(transfer.decisionInFlight);
+            reject.addEventListener("click", () => void decideIncomingFile(transfer, false));
+
+            actions.append(accept, reject);
+            item.append(actions);
+        }
         if (transfer.downloadUrl) {
             const download = document.createElement("a");
             download.href = transfer.downloadUrl;
@@ -614,7 +669,8 @@ function uploadFile() {
         id: `upload-${Date.now()}`,
         filename: file.name,
         progress: 0,
-        status: "Uploading to gateway"
+        status: "Uploading to gateway",
+        awaitingTransferId: true
     };
     state.activeTransfers.push(transfer);
     renderTransfers();
@@ -644,9 +700,14 @@ function uploadFile() {
     request.addEventListener("load", () => {
         const payload = parseXhrResponse(request);
         if (request.status >= 200 && request.status < 300) {
-            transfer.status = "Uploaded to gateway; awaiting recipient confirmation";
+            if (payload.transfer_id) {
+                transfer.id = payload.transfer_id;
+                transfer.awaitingTransferId = false;
+            }
+            transfer.progress = 100;
+            transfer.status = "Waiting for recipient to accept";
             showNotice(
-                "Uploaded to gateway. This does not confirm UDP delivery to the recipient.",
+                "Uploaded to gateway. Waiting for the recipient to accept the transfer.",
                 "success"
             );
         } else {
