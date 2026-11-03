@@ -421,7 +421,13 @@ void LiveWebGateway::stop() {
 }
 
 void LiveWebGateway::acceptLoop() {
+    auto nextSessionSweep = std::chrono::steady_clock::now() + std::chrono::seconds(30);
     while (running_) {
+        if (std::chrono::steady_clock::now() >= nextSessionSweep) {
+            expireIdleSessions();
+            nextSessionSweep = std::chrono::steady_clock::now() + std::chrono::seconds(30);
+        }
+
         sockaddr_in address{};
         SocketLength length = sizeof(address);
         const auto client = accept(listener_, reinterpret_cast<sockaddr*>(&address), &length);
@@ -450,6 +456,24 @@ void LiveWebGateway::acceptLoop() {
             workers_cv_.notify_all();
         }).detach();
     }
+}
+
+void LiveWebGateway::expireIdleSessions() {
+    const auto now = nowMs();
+    std::vector<std::shared_ptr<Session>> expired;
+    {
+        std::lock_guard<std::mutex> lock(sessions_mutex_);
+        for (auto it = sessions_.begin(); it != sessions_.end();) {
+            const auto last = it->second->last_activity_ms.load();
+            if (now >= last && now - last > SESSION_IDLE_TIMEOUT_MS) {
+                expired.push_back(std::move(it->second));
+                it = sessions_.erase(it);
+            } else {
+                ++it;
+            }
+        }
+    }
+    for (auto& session : expired) session->client->logout();
 }
 
 std::string LiveWebGateway::sessionTokenFromCookie(const std::string& cookie) const {
