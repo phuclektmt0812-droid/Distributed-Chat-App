@@ -638,7 +638,7 @@ void LiveWebGateway::handleConnection(SocketHandle socket) {
                                     response = {{"created", true},
                                                 {"message", "Account created. You can now log in."}};
                                 } else if (rejected) {
-                                    status = rejectionCode == protocol::ACCOUNT_EXISTS ? 409 : 400;
+                                    status = rejectionCode == protocol::ERR_ACCOUNT_EXISTS ? 409 : 400;
                                     response = {{"error", rejectionReason}, {"code", rejectionCode}};
                                 } else {
                                     status = 504;
@@ -743,7 +743,7 @@ void LiveWebGateway::handleConnection(SocketHandle socket) {
                                         if (!rejected) {
                                             status = 504;
                                             response = {{"error", "Timed out waiting for server authentication"}};
-                                        } else if (rejectionCode == protocol::ACCOUNT_ALREADY_ONLINE) {
+                                        } else if (rejectionCode == protocol::ERR_ACCOUNT_ALREADY_ONLINE) {
                                             status = 409;
                                             response = {{"error", rejectionReason}, {"code", rejectionCode}};
                                         } else {
