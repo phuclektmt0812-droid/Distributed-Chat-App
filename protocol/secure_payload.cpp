@@ -54,7 +54,7 @@ EncryptionKey readKeyFromFile(const std::string& path) {
     std::string hex;
     if(!std::getline(input,hex) || input.bad())
         throw std::invalid_argument("Key file '"+path+"' is empty or unreadable");
-    if(!hex.empty() && hex.back()=='\\r') hex.pop_back();
+    if(!hex.empty() && hex.back()=='\r') hex.pop_back();
     std::string extra;
     if(std::getline(input,extra) && !extra.empty())
         throw std::invalid_argument("Key file '"+path+"' contains unexpected extra data");
