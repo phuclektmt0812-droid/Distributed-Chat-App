@@ -155,11 +155,14 @@ bool FileReceiver::finalize() {
             fileproto::sha256File(temporary_path_)!=offer_.sha256) {
             fail("SHA-256 mismatch"); return false;
         }
-        fs::path base=directory_/offer_.filename;
-        fs::path final=base;
-        for (std::uint32_t n=1;fs::exists(final);++n) {
-            if (n>10000) { fail("could not select collision-free name"); return false; }
-            final=base.parent_path()/(base.stem().string()+" ("+std::to_string(n)+")"+base.extension().string());
+        fs::path base = directory_ / fs::u8path(offer_.filename);
+        fs::path final = base;
+        const auto stem = base.stem().u8string();
+        const auto extension = base.extension().u8string();
+        for (std::uint32_t n = 1; fs::exists(final); ++n) {
+            if (n > 10000) { fail("could not select collision-free name"); return false; }
+            final = base.parent_path() /
+                fs::u8path(stem + " (" + std::to_string(n) + ")" + extension);
         }
         fs::rename(temporary_path_,final);
         owns_partial_=false;
