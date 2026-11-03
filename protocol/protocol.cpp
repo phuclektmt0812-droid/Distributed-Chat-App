@@ -143,9 +143,6 @@ bool sendUdpPacketSecure(SocketHandle socket,const Packet& packet,const sockaddr
     return sent==static_cast<ssize_t>(datagram.size());
 #endif
 }
-bool decodeSecureDatagram(const std::uint8_t* bytes,std::size_t size,const EncryptionKey& key,Packet& output) {
-    return size<=MAX_UDP_DATAGRAM && decodeSecurePacket(bytes,size,key,output) && isUdpType(output.type);
-}
 bool decodePacket(const std::uint8_t* data,std::size_t n,Packet& output,std::size_t max_wire) {
     return n<=max_wire && decodePacket(data,n,output);
 }
