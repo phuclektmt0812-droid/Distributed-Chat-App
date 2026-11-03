@@ -23,7 +23,7 @@ Implemented routes:
 - `POST /global_message`, `POST /private_message`
 - `POST /file_upload`, `POST /file_decision`, `GET /file_download?transfer_id=...`
 
-The Gateway uses an HttpOnly, SameSite=Lax session cookie and a different `DcapClient` for each logged-in browser. It rejects cross-origin POST requests, limits active sessions to 64, and expires sessions after 12 hours of inactivity. Uploaded files are staged under `uploads/live-web/<session-token>/`. Incoming files are stored under `received_files/live-web/<session-token>/` and become downloadable from the browser after transfer completion.
+The Gateway uses an HttpOnly, SameSite=Lax session cookie and a different `DcapClient` for each logged-in browser. It rejects cross-origin POST requests, limits active sessions to 64 and concurrent HTTP workers to 16, and expires sessions after 12 hours of inactivity. Browser uploads are currently limited to 16 MiB per file (the underlying DCAP protocol supports larger files, but the first Gateway version buffers multipart requests in memory). Uploaded files are staged under `uploads/live-web/<session-token>/`. Incoming files are stored under `received_files/live-web/<session-token>/` and become downloadable from the browser after transfer completion.
 
 ## Build
 
@@ -101,4 +101,5 @@ This is an integration prototype, not a production-ready public service.
 - The existing shared AES key remains a shared secret across the Server and Gateway. Keep it private and do not put it in the browser.
 - Add persistent user authentication, login rate limiting, abuse controls, monitoring, and automated session/upload/received-file cleanup before a wider public launch.
 - The Gateway uses HTTP polling for events, not WebSockets.
+- Uploaded and received files are not automatically deleted yet; configure a retention/cleanup policy before a wider deployment.
 - The Gateway has not yet been verified with a live VPS, TLS proxy, multi-browser deployment, or a completed end-to-end browser test. Build and smoke-test it in the target environment before sharing a public URL.
