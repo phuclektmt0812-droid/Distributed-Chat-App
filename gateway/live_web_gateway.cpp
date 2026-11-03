@@ -446,7 +446,13 @@ void LiveWebGateway::acceptLoop() {
             ++active_workers_;
         }
         std::thread([this, client] {
-            handleConnection(client);
+            try {
+                handleConnection(client);
+            } catch (const std::exception& error) {
+                std::cerr << "[GATEWAY] Request handler failed: " << error.what() << std::endl;
+            } catch (...) {
+                std::cerr << "[GATEWAY] Request handler failed with an unknown exception" << std::endl;
+            }
             shutdownSocket(client);
             closeSocket(client);
             {
@@ -806,7 +812,8 @@ void LiveWebGateway::handleConnection(SocketHandle socket) {
                                     "uploads" / "live-web" / token;
                                 std::filesystem::create_directories(directory);
                                 const auto uploadPath = directory /
-                                    (std::to_string(nowMs()) + "-" + filename);
+                                    (std::to_string(nowMs()) + "-" +
+                                     randomToken().substr(0, 8) + "-" + filename);
                                 std::ofstream output(uploadPath, std::ios::binary);
                                 if (!output) throw std::runtime_error("Could not create upload file");
                                 output.write(fileBytes.data(),
