@@ -23,7 +23,7 @@ Implemented routes:
 - `POST /global_message`, `POST /private_message`
 - `POST /file_upload`, `POST /file_decision`, `GET /file_download?transfer_id=...`
 
-The Gateway uses an HttpOnly, SameSite=Lax session cookie and a different `DcapClient` for each logged-in browser. It rejects cross-origin POST requests, limits active sessions to 64 and concurrent HTTP workers to 16, and expires sessions after 12 hours of inactivity. Browser uploads are currently limited to 16 MiB per file (the underlying DCAP protocol supports larger files, but the first Gateway version buffers multipart requests in memory). Uploaded files are staged under `uploads/live-web/<session-token>/`. Incoming files are stored under `received_files/live-web/<session-token>/` and become downloadable from the browser after transfer completion.
+The Gateway uses an HttpOnly, SameSite=Lax session cookie and a different `DcapClient` for each logged-in browser. It rejects cross-origin POST requests, limits active sessions to 64 and concurrent HTTP workers to 8, and expires sessions after 12 hours of inactivity. Browser uploads are currently limited to 16 MiB per file (the underlying DCAP protocol supports larger files, but the first Gateway version buffers multipart requests in memory). Uploaded files are staged under `uploads/live-web/<session-token>/`. Incoming files are stored under `received_files/live-web/<session-token>/` and become downloadable from the browser after transfer completion.
 
 ## Build
 
